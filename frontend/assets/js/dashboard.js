@@ -237,15 +237,28 @@ function renderAll() {
 }
 
 function applyDashboardData(data) {
-  state.diary = data.diary;
-  state.stats = data.stats;
-  state.movies = data.movies;
-  state.members = data.diary.members;
-  state.partner = data.diary.partner;
+  const diary = data?.diary;
+
+  if (!diary || !Array.isArray(diary.members)) {
+    console.error('[logtwo] /api/diary devolveu um diário inválido.', data);
+    throw new Error('Não foi possível carregar os dados do diário.');
+  }
+
+  state.diary = diary;
+  state.stats = data.stats ?? null;
+  state.movies = Array.isArray(data.movies) ? data.movies : [];
+  state.members = diary.members;
+  state.partner = diary.partner ?? null;
 }
 
 async function loadDashboard() {
   const data = await api('/api/diary');
+
+  if (!data?.diary) {
+    console.error('[logtwo] /api/diary sem diário na resposta.', data);
+    throw new Error('Não foi possível carregar os dados do diário.');
+  }
+
   applyDashboardData(data);
 }
 
@@ -369,10 +382,18 @@ async function performSearch(query) {
 
     if (controller.signal.aborted || els.searchInput.value.trim() !== query) return;
 
+    if (!Array.isArray(data?.results)) {
+      console.error('[logtwo] Busca sem lista de resultados.', data);
+      renderSearchError('O servidor devolveu uma busca inválida. Tente novamente.');
+      return;
+    }
+
     state.searchResults = data.results;
     renderSearchResults(data.results);
   } catch (error) {
     if (error.name === 'AbortError') return;
+
+    console.error('[logtwo] Falha na busca de filmes', error);
     renderSearchError(error.message);
   } finally {
     if (state.searchAbort === controller) {
@@ -732,7 +753,8 @@ async function refreshAfterReview(fallbackMovie) {
     await loadDashboard();
     renderSidebar();
     renderShelf();
-  } catch {
+  } catch (error) {
+    console.warn('[logtwo] Não foi possível recarregar o diário; mantendo o estado local.', error);
     const index = state.movies.findIndex((movie) => movie.tmdbId === fallbackMovie.tmdbId);
     if (index >= 0) {
       state.movies[index] = fallbackMovie;
@@ -763,6 +785,11 @@ async function saveReview() {
       method: 'PUT',
       body: { rating: state.draftRating, comment },
     });
+
+    if (!data?.review) {
+      console.error('[logtwo] Salvamento de nota sem avaliação na resposta.', data);
+      throw new Error('O servidor não confirmou sua nota. Tente novamente.');
+    }
 
     movie.reviews = [
       data.review,
@@ -803,6 +830,12 @@ function openMovie(movieId, trigger = document.activeElement) {
     .then((data) => {
       if (controller.signal.aborted) return;
 
+      if (!data?.movie || !Array.isArray(data.movie.reviews)) {
+        console.error('[logtwo] Ficha do filme inválida.', data);
+        renderModalError('O servidor devolveu uma ficha inválida. Tente novamente.');
+        return;
+      }
+
       state.activeMovie = data.movie;
       const ownReview = data.movie.reviews.find((review) => review.userId === state.me.id);
       state.draftRating = ownReview?.rating || 0;
@@ -810,6 +843,8 @@ function openMovie(movieId, trigger = document.activeElement) {
     })
     .catch((error) => {
       if (error.name === 'AbortError') return;
+
+      console.error('[logtwo] Falha ao abrir a ficha do filme', error);
       renderModalError(error.message);
     })
     .finally(() => {
@@ -922,6 +957,12 @@ async function boot() {
   try {
     const data = await api('/api/auth/me');
 
+    if (!data?.user) {
+      console.error('[logtwo] Sessão sem usuário no dashboard.', data);
+      window.location.replace('/index.html');
+      return;
+    }
+
     if (!data.diary || data.diary.status !== 'active') {
       window.location.replace('/connect.html');
       return;
@@ -939,6 +980,7 @@ async function boot() {
 
     if (error?.status === 401) return;
 
+    console.error('[logtwo] Falha ao abrir a estante', error);
     showBootError(error.message || 'Não foi possível abrir a estante.');
   }
 }

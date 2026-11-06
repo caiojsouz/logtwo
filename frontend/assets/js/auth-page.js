@@ -150,8 +150,17 @@ form.addEventListener('submit', async (event) => {
       redirectOn401: false,
     });
 
-    redirectForDiary(data.diary);
+    if (!data?.user) {
+      console.error('[logtwo] Resposta de autenticação sem usuário.', data);
+      showError('O servidor devolveu uma resposta inválida. Tente novamente.');
+      setLoading(false);
+      return;
+    }
+
+    redirectForDiary(data?.diary);
   } catch (error) {
+    console.error(`[logtwo] Falha ao ${mode === 'register' ? 'criar conta' : 'entrar'}`, error);
+
     if (error instanceof ApiError || error?.status !== undefined) {
       showError(error.message);
     } else {
@@ -164,13 +173,21 @@ form.addEventListener('submit', async (event) => {
 async function checkSession() {
   try {
     const data = await api('/api/auth/me', { redirectOn401: false });
-    redirectForDiary(data.diary);
+
+    if (!data?.user) {
+      console.error('[logtwo] Sessão sem usuário na resposta.', data);
+      showBootError('Não foi possível abrir o diário. Tente novamente.');
+      return;
+    }
+
+    redirectForDiary(data?.diary);
   } catch (error) {
     if (error?.status === 401) {
       hideBootScreen();
       return;
     }
 
+    console.error('[logtwo] Falha ao verificar a sessão', error);
     showBootError(error.message || 'Não foi possível abrir o diário.');
   }
 }

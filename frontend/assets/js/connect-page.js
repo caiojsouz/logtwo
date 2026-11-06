@@ -58,6 +58,12 @@ function showChoice() {
 }
 
 function showPending(diary) {
+  if (!diary) {
+    console.error('[logtwo] Não foi possível exibir o convite: diário ausente.', diary);
+    showChoice();
+    return;
+  }
+
   currentDiary = diary;
   choiceState.classList.add('hidden');
   pendingState.classList.remove('hidden');
@@ -71,6 +77,12 @@ async function refreshStatus({ manual = false } = {}) {
 
   try {
     const data = await api('/api/auth/me', { redirectOn401: false });
+
+    if (!data?.user) {
+      console.error('[logtwo] Resposta de sessão inválida no convite.', data);
+      if (manual) pendingFeedback.textContent = 'Não foi possível verificar o convite.';
+      return;
+    }
 
     if (data.diary?.status === 'active') {
       stopPolling();
@@ -96,6 +108,8 @@ async function refreshStatus({ manual = false } = {}) {
       window.location.replace('/index.html');
       return;
     }
+
+    console.error('[logtwo] Falha ao verificar o status do diário', error);
 
     if (manual) {
       pendingFeedback.textContent = error.message;
@@ -153,6 +167,13 @@ createForm.addEventListener('submit', async (event) => {
 
   try {
     const data = await api('/api/diary', { method: 'POST' });
+
+    if (!data?.diary) {
+      console.error('[logtwo] Criação de diário sem dados na resposta.', data);
+      showFormError(createError, 'O servidor não devolveu o diário. Tente novamente.');
+      return;
+    }
+
     showPending(data.diary);
     toast('Diário criado. Envie o código para sua dupla.');
   } catch (error) {
@@ -160,7 +181,9 @@ createForm.addEventListener('submit', async (event) => {
       await refreshStatus({ manual: true });
       return;
     }
-    showFormError(createError, error.message);
+
+    console.error('[logtwo] Falha ao criar o diário', error);
+    showFormError(createError, error.message || 'Não foi possível criar o diário.');
   } finally {
     setButtonBusy(createButton, false);
   }
@@ -181,10 +204,18 @@ joinForm.addEventListener('submit', async (event) => {
   setButtonBusy(joinButton, true, 'Entrando…');
 
   try {
-    await api('/api/diary/join', { method: 'POST', body: { code } });
+    const data = await api('/api/diary/join', { method: 'POST', body: { code } });
+
+    if (!data?.diary) {
+      console.error('[logtwo] Entrada no diário sem diário na resposta.', data);
+      showFormError(joinError, 'O servidor não confirmou a entrada. Tente novamente.');
+      return;
+    }
+
     window.location.replace('/dashboard.html');
   } catch (error) {
-    showFormError(joinError, error.message);
+    console.error('[logtwo] Falha ao entrar no diário', error);
+    showFormError(joinError, error.message || 'Não foi possível entrar nesse diário.');
     setButtonBusy(joinButton, false);
   }
 });
@@ -222,12 +253,18 @@ async function init() {
   try {
     const data = await api('/api/auth/me', { redirectOn401: false });
 
+    if (!data?.user) {
+      console.error('[logtwo] Sessão sem usuário na tela de convite.', data);
+      window.location.replace('/index.html');
+      return;
+    }
+
     if (data.diary?.status === 'active') {
       window.location.replace('/dashboard.html');
       return;
     }
 
-    greeting.textContent = `Olá, ${data.user.name.split(/\s+/)[0]}`;
+    greeting.textContent = `Olá, ${data.user.name?.split(/\s+/)[0] || 'você'}`;
 
     if (data.diary?.status === 'pending') {
       showPending(data.diary);
@@ -242,6 +279,7 @@ async function init() {
       return;
     }
 
+    console.error('[logtwo] Falha ao carregar a tela de convite', error);
     showBootError(error.message || 'Não foi possível carregar seu convite.');
   }
 }

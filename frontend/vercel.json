@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://logtwo-api.onrender.com"
+      "destination": "https://logtwo-api.onrender.com/api/$1"
     }
   ],
   "headers": [

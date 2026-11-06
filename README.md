@@ -139,7 +139,7 @@ Anote a URL pública do Render, por exemplo:
 
 ### 4. Vercel — frontend estático
 
-1. Edite `frontend/vercel.json` e substitua o placeholder pela URL real do Render:
+1. O rewrite já aponta para o backend em produção. Se o seu serviço no Render tiver outro subdomínio, ajuste o `destination` em `frontend/vercel.json`:
 
 ```json
 {
@@ -151,6 +151,8 @@ Anote a URL pública do Render, por exemplo:
   ]
 }
 ```
+
+> O destino **precisa** terminar com `/api/$1`. Apontar apenas para `https://logtwo-api.onrender.com` faz a Vercel devolver a raiz do backend para todas as chamadas, e o frontend recebe uma resposta sem JSON.
 
 2. Na Vercel: **Add New → Project → Import Git Repository**.
 3. Configuração do projeto:
@@ -201,6 +203,7 @@ O rewrite mantém as chamadas em `/api` no mesmo domínio da Vercel, então o co
 | Busca retorna `503` | TMDB sem credencial | configure `TMDB_ACCESS_TOKEN` ou `TMDB_API_KEY` |
 | Primeira requisição lenta | Render Free hiberna | aguarde o cold start (~30–60 s) |
 | Login com fundo claro | HTML/CSS em cache | recarregue com cache limpo; o body já tem `bg-zinc-950` explícito |
+| `resposta inválida` / `data is null` | rewrite da Vercel sem `/api/$1` | corrija o `destination` e faça redeploy na Vercel |
 
 ---
 
