@@ -7,6 +7,7 @@ Diário de filmes minimalista para duas pessoas: um único histórico compartilh
 - **Banco:** Turso (libSQL/SQLite)
 - **Auth:** JWT em cookie HTTP-Only + bcrypt
 - **Metadados:** TMDB (busca, pôsteres, duração)
+- **Extras:** indicações da dupla, até 4 filmes favoritos por pessoa e foto de perfil persistida no banco
 
 ---
 
@@ -22,7 +23,7 @@ Diário de filmes minimalista para duas pessoas: um único histórico compartilh
 └── frontend/
     ├── index.html             # login / cadastro
     ├── connect.html           # criar diário ou entrar com convite
-    ├── dashboard.html         # estante, busca e modal de avaliação
+    ├── dashboard.html         # abas Assistidos, Indicações e Perfil
     ├── vercel.json            # rewrite /api/* → Render
     └── assets/
 ```
@@ -58,6 +59,37 @@ npm run dev
 Abra `http://localhost:3000`. O Express serve a API e o frontend no mesmo host, então o cookie funciona sem CORS.
 
 > Sem credencial do TMDB a busca retorna `503`, mas cadastro, convite, dashboard e avaliações continuam funcionando.
+> Indicações e favoritos só conseguem incluir um filme que já esteja no cache local (`movies`) ou que possa ser buscado no TMDB.
+
+---
+
+## Novas rotas da API
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/recommendations` | lista as indicações do diário com quem indicou |
+| `POST` | `/api/recommendations` | indica um filme (`{ "movieId": 550 }`) |
+| `DELETE` | `/api/recommendations/:movieId` | remove uma indicação feita por você |
+| `GET` | `/api/profile` | perfil logado + favoritos |
+| `PATCH` | `/api/profile` | atualiza o nome (`{ "name": "..." }`) |
+| `POST` | `/api/profile/avatar` | envia a foto como `multipart/form-data` no campo `avatar` |
+| `DELETE` | `/api/profile/avatar` | remove a foto |
+| `GET` | `/api/profile/favorites` | lista os favoritos |
+| `POST` | `/api/profile/favorites` | adiciona favorito (`{ "movieId": 550 }`), limite de 4 |
+| `DELETE` | `/api/profile/favorites/:movieId` | remove um favorito |
+
+---
+
+## Fotos de perfil no Render
+
+O backend do Render usa disco efêmero, então nenhuma imagem é gravada em arquivo. O upload segue o mesmo princípio do KlubbHQ (**multer com `memoryStorage`**, validação de tipo e tamanho, zero escrita em disco), mas a imagem é persistida diretamente no Turso:
+
+1. O navegador recorta a foto em um quadrado de **512 × 512** e exporta em **WebP** (fallback JPEG).
+2. O `FormData` chega ao Express em memória; o backend valida o MIME, os **magic bytes** e o limite de **2 MB**.
+3. A imagem é convertida em data URL (`data:image/webp;base64,...`) e salva em `users.avatar_data`.
+4. Sidebar, dupla e modal leem esse campo via `avatarUrl`, então a foto continua disponível depois de hibernar, reiniciar ou fazer novo deploy.
+
+> O schema aplica `ALTER TABLE users ADD COLUMN avatar_data TEXT` automaticamente em bancos que já existiam.
 
 ---
 
@@ -173,6 +205,10 @@ O rewrite mantém as chamadas em `/api` no mesmo domínio da Vercel, então o co
 - [ ] Segunda conta entra com o código e o criador é redirecionado
 - [ ] Busca do TMDB retorna filmes com pôster
 - [ ] Cada pessoa salva e edita somente a própria nota
+- [ ] Abas **Assistidos**, **Indicações** e **Perfil** trocam sem recarregar a página
+- [ ] Indicar um filme pela ficha o faz aparecer na aba Indicações
+- [ ] O limite de 4 favoritos é respeitado (o quinto botão fica desabilitado)
+- [ ] Foto de perfil sobrevive a um novo deploy/hibernação do Render
 - [ ] DevTools → Application → Cookies mostra `logtwo_session` como `HttpOnly` e `Secure`
 
 ---
@@ -212,6 +248,8 @@ O rewrite mantém as chamadas em `/api` no mesmo domínio da Vercel, então o co
 - Senhas com bcrypt (cost 12) e e-mail único.
 - Sessão JWT de 7 dias em cookie `HttpOnly`, `Secure` em produção.
 - A avaliação é sempre gravada com o `user_id` do JWT — o body não aceita outro usuário.
-- Rate limit em autenticação e busca, validação de entrada e SQL parametrizado.
+- Indicações e favoritos só podem ser removidos pelo dono; o limite de 4 favoritos é validado na rota e por um trigger no SQLite.
+- Upload de avatar em memória, com whitelist PNG/JPG/WEBP/GIF, verificação de magic bytes, limite de 2 MB e SVG bloqueado.
+- Rate limit em autenticação, busca e perfil, validação de entrada e SQL parametrizado.
 - Código de convite exposto apenas para quem criou o diário enquanto ele está pendente.
 - Saída do DOM escapada no frontend.

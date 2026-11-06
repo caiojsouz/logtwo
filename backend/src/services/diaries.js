@@ -4,7 +4,9 @@ export async function findDiaryForUser(userId) {
   return one(
     `SELECT d.*,
             u1.name AS user1_name,
-            u2.name AS user2_name
+            u1.avatar_data AS user1_avatar,
+            u2.name AS user2_name,
+            u2.avatar_data AS user2_avatar
        FROM diaries d
        JOIN users u1 ON u1.id = d.user1_id
   LEFT JOIN users u2 ON u2.id = d.user2_id
@@ -18,7 +20,9 @@ export async function getDiaryById(diaryId) {
   return one(
     `SELECT d.*,
             u1.name AS user1_name,
-            u2.name AS user2_name
+            u1.avatar_data AS user1_avatar,
+            u2.name AS user2_name,
+            u2.avatar_data AS user2_avatar
        FROM diaries d
        JOIN users u1 ON u1.id = d.user1_id
   LEFT JOIN users u2 ON u2.id = d.user2_id

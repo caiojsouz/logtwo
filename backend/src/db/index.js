@@ -19,10 +19,22 @@ export const db = createClient({
   authToken: config.tursoToken,
 });
 
+async function ensureColumn(table, column, definition) {
+  const result = await db.execute(`PRAGMA table_info(${table})`);
+  const exists = result.rows.some((row) => row.name === column);
+
+  if (!exists) {
+    await db.execute(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+  }
+}
+
 export async function initDatabase() {
   await db.execute('PRAGMA foreign_keys = ON');
   const schema = fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
   await db.executeMultiple(schema);
+
+  // Bancos antigos (Turso) não recebem colunas novas via CREATE TABLE IF NOT EXISTS.
+  await ensureColumn('users', 'avatar_data', 'avatar_data TEXT');
 }
 
 export async function all(sql, args = []) {

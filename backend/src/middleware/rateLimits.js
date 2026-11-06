@@ -17,3 +17,11 @@ export const searchLimiter = rateLimit({
   legacyHeaders: false,
   message: jsonMessage('Muitas buscas em pouco tempo. Respire e tente novamente.'),
 });
+
+export const profileLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: jsonMessage('Muitas alterações de perfil. Aguarde alguns minutos.'),
+});

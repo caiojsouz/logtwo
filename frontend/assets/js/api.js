@@ -18,6 +18,7 @@ export async function api(path, options = {}) {
   } = options;
 
   const url = `${API_BASE}${path}`;
+  const isFormData = body instanceof FormData;
   let response;
 
   try {
@@ -25,8 +26,8 @@ export async function api(path, options = {}) {
       method,
       credentials: 'include',
       signal,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || isFormData ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
     });
   } catch (error) {
     if (error.name === 'AbortError') throw error;

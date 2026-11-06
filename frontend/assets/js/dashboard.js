@@ -21,6 +21,9 @@ const state = {
   movies: [],
   members: [],
   partner: null,
+  watchlist: [],
+  favorites: [],
+  activeTab: 'watched',
   searchResults: [],
   searchAbort: null,
   modalAbort: null,
@@ -28,7 +31,19 @@ const state = {
   draftRating: 0,
   modalTrigger: null,
   isSaving: false,
+  actionBusy: false,
+  avatarBusy: false,
 };
+
+const MAX_FAVORITES = 4;
+const TAB_HASH = {
+  watched: '#assistidos',
+  watchlist: '#indicacoes',
+  profile: '#perfil',
+};
+const HASH_TAB = Object.fromEntries(
+  Object.entries(TAB_HASH).map(([tab, hash]) => [hash, tab]),
+);
 
 const els = {
   duoAvatars: document.querySelector('#duo-avatars'),
@@ -44,6 +59,21 @@ const els = {
   moviesGrid: document.querySelector('#movies-grid'),
   emptyState: document.querySelector('#empty-state'),
   emptySearchButton: document.querySelector('#empty-search-btn'),
+  tabs: document.querySelector('#dashboard-tabs'),
+  watchlistCount: document.querySelector('#watchlist-count'),
+  watchlistGrid: document.querySelector('#watchlist-grid'),
+  watchlistEmpty: document.querySelector('#watchlist-empty'),
+  watchlistSearchButton: document.querySelector('#watchlist-search-btn'),
+  profileAvatar: document.querySelector('#profile-avatar'),
+  profileName: document.querySelector('#profile-name'),
+  profileEmail: document.querySelector('#profile-email'),
+  profileAvatarButton: document.querySelector('#profile-avatar-button'),
+  profileAvatarRemove: document.querySelector('#profile-avatar-remove'),
+  profileAvatarInput: document.querySelector('#profile-avatar-input'),
+  profileNameForm: document.querySelector('#profile-name-form'),
+  profileNameInput: document.querySelector('#profile-name-input'),
+  favoritesCount: document.querySelector('#favorites-count'),
+  favoritesGrid: document.querySelector('#favorites-grid'),
   searchWrap: document.querySelector('#search-wrap'),
   searchInput: document.querySelector('#search-input'),
   searchClear: document.querySelector('#search-clear'),
@@ -59,12 +89,88 @@ const FILM_ICON = `
     <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"></path>
   </svg>`;
 
+const BOOKMARK_ICON = `
+  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+    <path d="M6 4h12v17l-6-4-6 4V4z"></path>
+  </svg>`;
+
+const PLUS_ICON = `
+  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path d="M12 5v14M5 12h14"></path>
+  </svg>`;
+
 const formatAverage = (value) =>
   value === null || value === undefined ? '—' : Number(value).toFixed(1).replace('.', ',');
+
+const formatShortDate = (isoDate) => {
+  if (!isoDate) return '';
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' })
+    .format(date)
+    .replace('.', '');
+};
 
 const memberById = (id) => state.members.find((member) => member.id === id) || null;
 const memberTone = (index) =>
   index === 0 ? 'bg-accent/15 text-accent' : 'bg-panel/40 text-zinc-100';
+
+const isRecommended = (movieId) =>
+  state.watchlist.some((movie) => movie.tmdbId === movieId);
+const isFavorite = (movieId) => state.favorites.some((movie) => movie.tmdbId === movieId);
+
+function tabFromLocation() {
+  return HASH_TAB[window.location.hash] || 'watched';
+}
+
+function avatarMarkup(
+  person,
+  {
+    size = 'h-10 w-10',
+    textSize = 'text-[10px]',
+    tone = 'bg-panel/40 text-zinc-100',
+    border = 'border-2 border-base',
+    extra = '',
+  } = {},
+) {
+  if (person?.avatarUrl) {
+    return `<img
+      src="${escapeHtml(person.avatarUrl)}"
+      alt=""
+      loading="lazy"
+      decoding="async"
+      class="${size} shrink-0 rounded-full object-cover ${border} ${extra}"
+    />`;
+  }
+
+  return `<span class="flex ${size} shrink-0 items-center justify-center rounded-full font-bold ${border} ${tone} ${textSize} ${extra}">
+    ${escapeHtml(initials(person?.name))}
+  </span>`;
+}
+
+function syncMember(user) {
+  if (!user) return;
+
+  const index = state.members.findIndex((member) => member.id === user.id);
+
+  if (index >= 0) {
+    state.members[index] = { ...state.members[index], name: user.name, avatarUrl: user.avatarUrl ?? null };
+  }
+
+  if (state.partner?.id === user.id) {
+    state.partner = { ...state.partner, name: user.name, avatarUrl: user.avatarUrl ?? null };
+  }
+}
+
+function applyProfileUser(user) {
+  if (!user) return;
+
+  state.me = { ...state.me, ...user };
+  syncMember(state.me);
+  renderSidebar();
+  renderProfile();
+}
 
 function memberLabel(member) {
   const first = firstName(member.name);
@@ -80,8 +186,8 @@ function renderSidebar() {
   els.duoAvatars.innerHTML = members
     .map(
       (member, index) => `
-        <div class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-base text-[10px] font-bold ${memberTone(index)}" title="${escapeHtml(member.name)}">
-          ${escapeHtml(initials(member.name))}
+        <div class="shrink-0" title="${escapeHtml(member.name)}">
+          ${avatarMarkup(member, { tone: memberTone(index) })}
         </div>`,
     )
     .join('');
@@ -107,9 +213,12 @@ function renderSidebar() {
 
       return `
         <div class="flex items-center gap-2.5" title="${info.count} ${info.count === 1 ? 'avaliação' : 'avaliações'}">
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8px] font-bold ${memberTone(index)}">
-            ${escapeHtml(initials(member.name))}
-          </span>
+          ${avatarMarkup(member, {
+            size: 'h-6 w-6',
+            textSize: 'text-[8px]',
+            tone: memberTone(index),
+            border: '',
+          })}
           <span class="min-w-0 flex-1 truncate text-[11px] text-zinc-400">${escapeHtml(memberLabel(member))}</span>
           <span class="flex items-center gap-1 text-accent">
             ${starSvg('h-2.5 w-2.5')}
@@ -120,10 +229,11 @@ function renderSidebar() {
     .join('');
 
   if (state.me) {
-    els.sidebarUserAvatar.innerHTML = `
-      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[10px] font-bold text-accent">
-        ${escapeHtml(initials(state.me.name))}
-      </div>`;
+    els.sidebarUserAvatar.innerHTML = avatarMarkup(state.me, {
+      size: 'h-9 w-9',
+      tone: 'bg-accent/15 text-accent',
+      border: 'border border-panel/25',
+    });
     els.sidebarUserName.textContent = state.me.name;
     els.sidebarUserEmail.textContent = state.me.email;
   }
@@ -231,9 +341,205 @@ function renderShelf() {
   els.moviesGrid.innerHTML = state.movies.map(renderMovieCard).join('');
 }
 
+function renderWatchlistCard(movie, index) {
+  const own = movie.recommendedBy?.id === state.me?.id;
+  const recommender = movie.recommendedBy?.name || 'alguém da dupla';
+  const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
+  const meta = [movie.year, runtime].filter(Boolean).join(' · ') || 'ficha do TMDB';
+  const date = formatShortDate(movie.recommendedAt);
+  const delay = Math.min(index * 45, 360);
+
+  return `
+    <article class="card-enter" style="animation-delay:${delay}ms">
+      <button
+        type="button"
+        data-movie-id="${movie.tmdbId}"
+        class="group block w-full text-left"
+        aria-label="Abrir ${escapeHtml(movie.title)}"
+      >
+        <div class="relative aspect-[2/3] overflow-hidden rounded-2xl border border-panel/25 bg-panel/10">
+          ${posterMarkup(movie)}
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/75 via-transparent to-transparent"></div>
+          <span class="absolute left-2.5 top-2.5 rounded-full border border-accent/25 bg-base/70 px-2 py-0.5 text-[8px] uppercase tracking-[0.14em] text-accent backdrop-blur">
+            na fila
+          </span>
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-2 items-center justify-center p-3 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+            <span class="rounded-full border border-light/20 bg-base/70 px-3 py-1 text-[8px] uppercase tracking-[0.2em] text-zinc-100 backdrop-blur">
+              abrir ficha
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-3 px-0.5">
+          <h3 class="truncate text-[13px] font-semibold leading-snug text-zinc-100">
+            ${escapeHtml(movie.title)}
+          </h3>
+          <p class="mt-1 text-[9px] uppercase tracking-[0.14em] text-zinc-400">${escapeHtml(meta)}</p>
+        </div>
+      </button>
+
+      <div class="mt-2.5 flex items-center justify-between gap-2 px-0.5">
+        <p class="min-w-0 truncate text-[9px] uppercase tracking-[0.12em] text-zinc-400" title="Indicado por ${escapeHtml(recommender)}">
+          por <span class="text-accent/80">${escapeHtml(firstName(recommender))}</span>${date ? ` · ${escapeHtml(date)}` : ''}
+        </p>
+        ${
+          own
+            ? `<button
+                 type="button"
+                 data-remove-recommendation="${movie.tmdbId}"
+                 class="shrink-0 text-[9px] uppercase tracking-[0.1em] text-zinc-400 transition hover:text-danger"
+               >
+                 remover
+               </button>`
+            : ''
+        }
+      </div>
+    </article>`;
+}
+
+function renderWatchlist() {
+  const count = state.watchlist.length;
+
+  els.watchlistCount.textContent =
+    count === 0
+      ? 'Nenhuma indicação ainda'
+      : `${count} ${count === 1 ? 'filme esperando' : 'filmes esperando'} vocês`;
+  els.watchlistGrid.classList.toggle('hidden', count === 0);
+  els.watchlistEmpty.classList.toggle('hidden', count > 0);
+
+  if (count === 0) {
+    els.watchlistGrid.innerHTML = '';
+    return;
+  }
+
+  els.watchlistGrid.innerHTML = state.watchlist.map(renderWatchlistCard).join('');
+}
+
+function renderFavoriteSlot(movie) {
+  if (!movie) {
+    return `
+      <button
+        type="button"
+        data-empty-favorite
+        aria-label="Adicionar um filme favorito"
+        class="group flex aspect-[2/3] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-panel/30 bg-panel/[0.03] px-3 text-center transition hover:border-accent/40 hover:bg-accent/[0.04]"
+      >
+        <span class="flex h-9 w-9 items-center justify-center rounded-full border border-panel/35 text-zinc-400 transition group-hover:border-accent/40 group-hover:text-accent">
+          ${PLUS_ICON}
+        </span>
+        <span class="text-[9px] uppercase tracking-[0.16em] text-zinc-400/70">vaga livre</span>
+      </button>`;
+  }
+
+  return `
+    <div class="group relative">
+      <button
+        type="button"
+        data-movie-id="${movie.tmdbId}"
+        class="block w-full text-left"
+        aria-label="Abrir ${escapeHtml(movie.title)}"
+      >
+        <div class="relative aspect-[2/3] overflow-hidden rounded-2xl border border-panel/25 bg-panel/10">
+          ${posterMarkup(movie)}
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/85 via-transparent to-transparent"></div>
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 p-3">
+            <p class="line-clamp-2 text-[11px] font-semibold leading-snug text-zinc-100">
+              ${escapeHtml(movie.title)}
+            </p>
+            ${movie.year ? `<p class="mt-1 text-[8px] uppercase tracking-[0.14em] text-zinc-400">${escapeHtml(movie.year)}</p>` : ''}
+          </div>
+        </div>
+      </button>
+      <button
+        type="button"
+        data-remove-favorite="${movie.tmdbId}"
+        aria-label="Remover ${escapeHtml(movie.title)} dos favoritos"
+        class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300 opacity-0 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18"></path>
+        </svg>
+      </button>
+    </div>`;
+}
+
+function renderProfile() {
+  if (!state.me) return;
+
+  els.profileAvatar.innerHTML = avatarMarkup(state.me, {
+    size: 'h-24 w-24 sm:h-28 sm:w-28',
+    textSize: 'text-3xl',
+    tone: 'bg-accent/15 text-accent',
+    border: 'border border-panel/40',
+  });
+  els.profileName.textContent = state.me.name;
+  els.profileEmail.textContent = state.me.email;
+
+  if (document.activeElement !== els.profileNameInput) {
+    els.profileNameInput.value = state.me.name;
+  }
+
+  const hasAvatar = Boolean(state.me.avatarUrl);
+  els.profileAvatarRemove.classList.toggle('hidden', !hasAvatar);
+  els.profileAvatarRemove.classList.toggle('inline-flex', hasAvatar);
+
+  els.favoritesCount.textContent = `${state.favorites.length}/${MAX_FAVORITES}`;
+  els.favoritesGrid.innerHTML = Array.from({ length: MAX_FAVORITES }, (_, index) =>
+    renderFavoriteSlot(state.favorites[index]),
+  ).join('');
+}
+
+function renderTabs() {
+  const counts = {
+    watched: state.movies.length,
+    watchlist: state.watchlist.length,
+  };
+
+  for (const element of document.querySelectorAll('[data-tab-count]')) {
+    element.textContent = counts[element.dataset.tabCount] ?? 0;
+  }
+}
+
+function setActiveTab(tab, { push = false, animate = true } = {}) {
+  const next = TAB_HASH[tab] ? tab : 'watched';
+  state.activeTab = next;
+
+  for (const button of els.tabs.querySelectorAll('[data-tab]')) {
+    const active = button.dataset.tab === next;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+
+  for (const panel of document.querySelectorAll('[data-panel]')) {
+    const active = panel.dataset.panel === next;
+    panel.hidden = !active;
+
+    if (active && animate) {
+      panel.classList.remove('animate-fade-up');
+      void panel.offsetWidth;
+      panel.classList.add('animate-fade-up');
+    }
+  }
+
+  if (push && window.location.hash !== TAB_HASH[next]) {
+    window.history.pushState({ tab: next }, '', TAB_HASH[next]);
+  }
+
+  const main = document.querySelector('main');
+  main?.scrollTo({ top: 0, behavior: 'auto' });
+
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+}
+
 function renderAll() {
   renderSidebar();
   renderShelf();
+  renderWatchlist();
+  renderProfile();
+  renderTabs();
 }
 
 function applyDashboardData(data) {
@@ -252,7 +558,17 @@ function applyDashboardData(data) {
 }
 
 async function loadDashboard() {
-  const data = await api('/api/diary');
+  const [data, recommendationsData, profileData] = await Promise.all([
+    api('/api/diary'),
+    api('/api/recommendations').catch((error) => {
+      console.error('[logtwo] Não foi possível carregar as indicações.', error);
+      return null;
+    }),
+    api('/api/profile').catch((error) => {
+      console.error('[logtwo] Não foi possível carregar o perfil.', error);
+      return null;
+    }),
+  ]);
 
   if (!data?.diary) {
     console.error('[logtwo] /api/diary sem diário na resposta.', data);
@@ -260,6 +576,19 @@ async function loadDashboard() {
   }
 
   applyDashboardData(data);
+
+  if (Array.isArray(recommendationsData?.recommendations)) {
+    state.watchlist = recommendationsData.recommendations;
+  }
+
+  if (Array.isArray(profileData?.favorites)) {
+    state.favorites = profileData.favorites;
+  }
+
+  if (profileData?.user) {
+    state.me = { ...state.me, ...profileData.user };
+    syncMember(state.me);
+  }
 }
 
 function setSearchExpanded(expanded) {
@@ -331,9 +660,11 @@ function renderSearchResults(results) {
           ${
             movie.inDiary
               ? `<span class="shrink-0 rounded-full border border-accent/25 bg-accent/[0.06] px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-accent">no diário</span>`
-              : `<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-400">
-                   <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-                 </span>`
+              : isRecommended(movie.tmdbId)
+                ? `<span class="shrink-0 rounded-full border border-light/20 px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-light/70">indicado</span>`
+                : `<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-400">
+                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                   </span>`
           }
         </button>`,
     )
@@ -484,15 +815,86 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-els.emptySearchButton.addEventListener('click', () => {
-  els.searchInput.focus();
-  els.searchInput.select();
+els.emptySearchButton.addEventListener('click', focusSearch);
+els.watchlistSearchButton.addEventListener('click', focusSearch);
+
+els.tabs.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-tab]');
+  if (!button) return;
+  setActiveTab(button.dataset.tab, { push: true });
+});
+
+els.tabs.addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+
+  const buttons = [...els.tabs.querySelectorAll('[data-tab]')];
+  const current = buttons.indexOf(document.activeElement);
+
+  if (current < 0) return;
+
+  event.preventDefault();
+
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? buttons.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+
+  const next = buttons[nextIndex];
+  next.focus();
+  setActiveTab(next.dataset.tab, { push: true });
+});
+
+window.addEventListener('popstate', () => {
+  setActiveTab(tabFromLocation());
 });
 
 els.moviesGrid.addEventListener('click', (event) => {
   const card = event.target.closest('[data-movie-id]');
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
+
+els.watchlistGrid.addEventListener('click', (event) => {
+  const remove = event.target.closest('[data-remove-recommendation]');
+
+  if (remove) {
+    removeRecommendationFromShelf(Number(remove.dataset.removeRecommendation));
+    return;
+  }
+
+  const card = event.target.closest('[data-movie-id]');
+  if (card) openMovie(Number(card.dataset.movieId), card);
+});
+
+els.favoritesGrid.addEventListener('click', (event) => {
+  const remove = event.target.closest('[data-remove-favorite]');
+
+  if (remove) {
+    removeFavoriteFromShelf(Number(remove.dataset.removeFavorite));
+    return;
+  }
+
+  if (event.target.closest('[data-empty-favorite]')) {
+    focusSearch();
+    return;
+  }
+
+  const card = event.target.closest('[data-movie-id]');
+  if (card) openMovie(Number(card.dataset.movieId), card);
+});
+
+els.profileAvatarButton.addEventListener('click', () => {
+  els.profileAvatarInput.click();
+});
+
+els.profileAvatarInput.addEventListener('change', () => {
+  const file = els.profileAvatarInput.files?.[0];
+  if (file) uploadAvatar(file);
+});
+
+els.profileAvatarRemove.addEventListener('click', removeAvatar);
+els.profileNameForm.addEventListener('submit', saveProfileName);
 
 function modalCloseButton() {
   return `
@@ -556,6 +958,83 @@ function starButtons(rating) {
   }).join('');
 }
 
+function modalActionsMarkup() {
+  const movie = state.activeMovie;
+  if (!movie) return '';
+
+  const recommendation = state.watchlist.find((item) => item.tmdbId === movie.tmdbId);
+  const favorite = isFavorite(movie.tmdbId);
+  const ownRecommendation = recommendation?.recommendedBy?.id === state.me?.id;
+  const busy = state.actionBusy;
+
+  const recLabel = recommendation
+    ? ownRecommendation
+      ? 'Remover indicação'
+      : `Indicado por ${firstName(recommendation.recommendedBy?.name || 'sua dupla')}`
+    : 'Indicar filme';
+  const recTitle = recommendation
+    ? ownRecommendation
+      ? 'Remover a sua indicação'
+      : 'Só quem indicou o filme pode removê-lo.'
+    : 'Sugerir este filme para a dupla';
+  const recDisabled = busy || Boolean(recommendation && !ownRecommendation);
+
+  const favoriteFull = !favorite && state.favorites.length >= MAX_FAVORITES;
+  const favLabel = favorite
+    ? 'Remover dos favoritos'
+    : favoriteFull
+      ? 'Favoritos cheios'
+      : 'Adicionar aos favoritos';
+  const favTitle = favorite
+    ? 'Remover dos seus favoritos'
+    : favoriteFull
+      ? `Você já escolheu ${MAX_FAVORITES} favoritos.`
+      : 'Salvar nos seus favoritos';
+  const favDisabled = busy || favoriteFull;
+
+  const base =
+    'inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-40';
+  const neutral = 'border-panel/35 text-zinc-300 hover:border-accent/40 hover:text-zinc-100';
+  const selected = 'border-accent/40 bg-accent/[0.08] text-accent hover:border-accent/60';
+
+  return `
+    <button
+      type="button"
+      data-action-recommend
+      aria-pressed="${Boolean(recommendation)}"
+      title="${escapeHtml(recTitle)}"
+      ${recDisabled ? 'disabled' : ''}
+      class="${base} ${recommendation ? selected : neutral}"
+    >
+      ${BOOKMARK_ICON}
+      ${escapeHtml(recLabel)}
+    </button>
+
+    <button
+      type="button"
+      data-action-favorite
+      aria-pressed="${favorite}"
+      title="${escapeHtml(favTitle)}"
+      ${favDisabled ? 'disabled' : ''}
+      class="${base} ${favorite ? selected : neutral}"
+    >
+      ${starSvg('h-3.5 w-3.5')}
+      ${escapeHtml(favLabel)}
+    </button>
+
+    ${
+      favoriteFull
+        ? `<span class="text-[9px] uppercase tracking-[0.12em] text-zinc-400/60">limite de ${MAX_FAVORITES} favoritos</span>`
+        : ''
+    }`;
+}
+
+function updateModalActions() {
+  const container = els.modal.querySelector('[data-modal-actions]');
+  if (!container) return;
+  container.innerHTML = modalActionsMarkup();
+}
+
 function renderModal() {
   const movie = state.activeMovie;
   if (!movie) return;
@@ -582,9 +1061,12 @@ function renderModal() {
     <section class="rounded-2xl border border-accent/25 bg-accent/[0.04] p-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5">
-          <span class="flex h-8 w-8 items-center justify-center rounded-full text-[9px] font-bold ${memberTone(ownMemberIndex)}">
-            ${escapeHtml(initials(state.me.name))}
-          </span>
+          ${avatarMarkup(state.me, {
+            size: 'h-8 w-8',
+            textSize: 'text-[9px]',
+            tone: memberTone(ownMemberIndex),
+            border: 'border border-accent/25',
+          })}
           <div>
             <p class="micro-label">sua nota</p>
             <p class="mt-0.5 text-xs font-semibold text-zinc-100">${escapeHtml(ownName)}</p>
@@ -625,9 +1107,12 @@ function renderModal() {
     <section class="rounded-2xl border border-panel/25 bg-panel/[0.06] p-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5">
-          <span class="flex h-8 w-8 items-center justify-center rounded-full text-[9px] font-bold ${memberTone(partnerIndex)}">
-            ${escapeHtml(initials(partner?.name || '?'))}
-          </span>
+          ${avatarMarkup(partner || { name: '?' }, {
+            size: 'h-8 w-8',
+            textSize: 'text-[9px]',
+            tone: memberTone(partnerIndex),
+            border: 'border border-panel/25',
+          })}
           <div>
             <p class="micro-label">nota de ${escapeHtml(partnerName)}</p>
             <p class="mt-0.5 text-xs font-semibold text-zinc-100">${escapeHtml(partner?.name || 'Sua dupla')}</p>
@@ -703,6 +1188,10 @@ function renderModal() {
         ${escapeHtml(movie.overview || 'Sem sinopse disponível no TMDB.')}
       </p>
 
+      <div class="mt-5 flex flex-wrap items-center gap-2" data-modal-actions>
+        ${modalActionsMarkup()}
+      </div>
+
       <div class="my-6 h-px bg-panel/25"></div>
 
       <div class="grid gap-4 lg:grid-cols-2">
@@ -753,6 +1242,7 @@ async function refreshAfterReview(fallbackMovie) {
     await loadDashboard();
     renderSidebar();
     renderShelf();
+    renderTabs();
   } catch (error) {
     console.warn('[logtwo] Não foi possível recarregar o diário; mantendo o estado local.', error);
     const index = state.movies.findIndex((movie) => movie.tmdbId === fallbackMovie.tmdbId);
@@ -806,6 +1296,313 @@ async function saveReview() {
   } finally {
     state.isSaving = false;
     updateSaveButton();
+  }
+}
+
+async function toggleRecommendation() {
+  const movie = state.activeMovie;
+  if (!movie || state.actionBusy) return;
+
+  const existing = state.watchlist.find((item) => item.tmdbId === movie.tmdbId);
+
+  if (existing && existing.recommendedBy?.id !== state.me?.id) {
+    toast('Só quem indicou o filme pode removê-lo.', 'error');
+    return;
+  }
+
+  state.actionBusy = true;
+  updateModalActions();
+
+  try {
+    if (existing) {
+      await api(`/api/recommendations/${movie.tmdbId}`, { method: 'DELETE' });
+      state.watchlist = state.watchlist.filter((item) => item.tmdbId !== movie.tmdbId);
+      toast('Indicação removida.');
+    } else {
+      const data = await api('/api/recommendations', {
+        method: 'POST',
+        body: { movieId: movie.tmdbId },
+      });
+
+      if (!data?.recommendation) {
+        console.error('[logtwo] Indicação sem filme na resposta.', data);
+        throw new Error('O servidor não confirmou a indicação.');
+      }
+
+      state.watchlist = [
+        data.recommendation,
+        ...state.watchlist.filter((item) => item.tmdbId !== data.recommendation.tmdbId),
+      ];
+      toast('Filme indicado para a dupla.');
+    }
+
+    renderWatchlist();
+    renderTabs();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.actionBusy = false;
+    updateModalActions();
+  }
+}
+
+async function toggleFavorite() {
+  const movie = state.activeMovie;
+  if (!movie || state.actionBusy) return;
+
+  const existing = isFavorite(movie.tmdbId);
+
+  if (!existing && state.favorites.length >= MAX_FAVORITES) {
+    toast(`Você pode escolher até ${MAX_FAVORITES} filmes favoritos.`, 'error');
+    return;
+  }
+
+  state.actionBusy = true;
+  updateModalActions();
+
+  try {
+    if (existing) {
+      await api(`/api/profile/favorites/${movie.tmdbId}`, { method: 'DELETE' });
+      state.favorites = state.favorites.filter((item) => item.tmdbId !== movie.tmdbId);
+      toast('Filme removido dos favoritos.');
+    } else {
+      const data = await api('/api/profile/favorites', {
+        method: 'POST',
+        body: { movieId: movie.tmdbId },
+      });
+
+      if (Array.isArray(data?.favorites)) {
+        state.favorites = data.favorites;
+      } else if (data?.favorite) {
+        state.favorites = [
+          ...state.favorites.filter((item) => item.tmdbId !== data.favorite.tmdbId),
+          data.favorite,
+        ];
+      } else {
+        console.error('[logtwo] Favorito sem lista na resposta.', data);
+        throw new Error('O servidor não confirmou o favorito.');
+      }
+
+      toast('Filme adicionado aos favoritos.');
+    }
+
+    renderProfile();
+    renderTabs();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.actionBusy = false;
+    updateModalActions();
+  }
+}
+
+async function removeRecommendationFromShelf(movieId) {
+  if (state.actionBusy) return;
+
+  const existing = state.watchlist.find((item) => item.tmdbId === movieId);
+
+  if (!existing) return;
+
+  if (existing.recommendedBy?.id !== state.me?.id) {
+    toast('Só quem indicou o filme pode removê-lo.', 'error');
+    return;
+  }
+
+  state.actionBusy = true;
+
+  try {
+    await api(`/api/recommendations/${movieId}`, { method: 'DELETE' });
+    state.watchlist = state.watchlist.filter((item) => item.tmdbId !== movieId);
+    renderWatchlist();
+    renderTabs();
+    toast('Indicação removida.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.actionBusy = false;
+    if (state.activeMovie) updateModalActions();
+  }
+}
+
+async function removeFavoriteFromShelf(movieId) {
+  if (state.actionBusy) return;
+
+  state.actionBusy = true;
+
+  try {
+    await api(`/api/profile/favorites/${movieId}`, { method: 'DELETE' });
+    state.favorites = state.favorites.filter((item) => item.tmdbId !== movieId);
+    renderProfile();
+    renderTabs();
+    toast('Filme removido dos favoritos.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.actionBusy = false;
+    if (state.activeMovie) updateModalActions();
+  }
+}
+
+function focusSearch() {
+  els.searchInput.focus();
+  els.searchInput.select();
+
+  if (window.matchMedia('(max-width: 1023px)').matches) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Não foi possível ler essa imagem.'));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function buildAvatarBlob(file) {
+  if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+    throw new Error('Envie uma imagem PNG, JPG, WEBP ou GIF.');
+  }
+
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error('Escolha uma imagem de até 12 MB.');
+  }
+
+  const image = await loadImageFromFile(file);
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext('2d');
+  const scale = Math.max(size / image.width, size / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+
+  return (
+    (await canvasToBlob(canvas, 'image/webp', 0.86)) ||
+    (await canvasToBlob(canvas, 'image/jpeg', 0.88))
+  );
+}
+
+function updateAvatarControls() {
+  const label = els.profileAvatarButton?.querySelector('[data-avatar-label]');
+
+  if (label) {
+    label.textContent = state.avatarBusy ? 'Enviando…' : 'Trocar foto';
+  }
+
+  if (els.profileAvatarButton) els.profileAvatarButton.disabled = state.avatarBusy;
+  if (els.profileAvatarRemove) els.profileAvatarRemove.disabled = state.avatarBusy;
+}
+
+async function uploadAvatar(file) {
+  if (!file || state.avatarBusy) return;
+
+  state.avatarBusy = true;
+  updateAvatarControls();
+
+  try {
+    const blob = await buildAvatarBlob(file);
+
+    if (!blob) {
+      throw new Error('Não foi possível processar essa imagem.');
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', blob, `avatar.${blob.type === 'image/webp' ? 'webp' : 'jpg'}`);
+
+    const data = await api('/api/profile/avatar', { method: 'POST', body: formData });
+
+    if (!data?.user) {
+      console.error('[logtwo] Upload de avatar sem usuário na resposta.', data);
+      throw new Error('O servidor não confirmou a foto.');
+    }
+
+    applyProfileUser(data.user);
+    toast('Foto de perfil atualizada.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.avatarBusy = false;
+    updateAvatarControls();
+    els.profileAvatarInput.value = '';
+  }
+}
+
+async function removeAvatar() {
+  if (state.avatarBusy) return;
+
+  state.avatarBusy = true;
+  updateAvatarControls();
+
+  try {
+    const data = await api('/api/profile/avatar', { method: 'DELETE' });
+
+    if (!data?.user) {
+      console.error('[logtwo] Remoção de avatar sem usuário na resposta.', data);
+      throw new Error('O servidor não confirmou a remoção.');
+    }
+
+    applyProfileUser(data.user);
+    toast('Foto de perfil removida.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.avatarBusy = false;
+    updateAvatarControls();
+  }
+}
+
+async function saveProfileName(event) {
+  event.preventDefault();
+
+  const name = els.profileNameInput.value.trim().replace(/\s+/g, ' ');
+
+  if (name.length < 2 || name.length > 60) {
+    toast('Informe um nome entre 2 e 60 caracteres.', 'error');
+    els.profileNameInput.focus();
+    return;
+  }
+
+  const submit = els.profileNameForm.querySelector('button[type="submit"]');
+  const originalLabel = submit.textContent;
+
+  submit.disabled = true;
+  submit.textContent = 'Salvando…';
+
+  try {
+    const data = await api('/api/profile', { method: 'PATCH', body: { name } });
+
+    if (!data?.user) {
+      console.error('[logtwo] Perfil sem usuário na resposta.', data);
+      throw new Error('O servidor não confirmou o novo nome.');
+    }
+
+    applyProfileUser(data.user);
+    toast('Nome atualizado.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    submit.disabled = false;
+    submit.textContent = originalLabel;
   }
 }
 
@@ -872,6 +1669,16 @@ function closeModal() {
 els.modal.addEventListener('click', (event) => {
   if (event.target.closest('[data-close-modal], [data-close-modal-button]')) {
     closeModal();
+    return;
+  }
+
+  if (event.target.closest('[data-action-recommend]')) {
+    toggleRecommendation();
+    return;
+  }
+
+  if (event.target.closest('[data-action-favorite]')) {
+    toggleFavorite();
     return;
   }
 
@@ -969,8 +1776,15 @@ async function boot() {
     }
 
     state.me = data.user;
+    state.activeTab = tabFromLocation();
     await loadDashboard();
     renderAll();
+    setActiveTab(state.activeTab, { animate: false });
+
+    if (window.location.hash !== TAB_HASH[state.activeTab]) {
+      window.history.replaceState({ tab: state.activeTab }, '', TAB_HASH[state.activeTab]);
+    }
+
     hideBootScreen();
   } catch (error) {
     if (error?.status === 409) {

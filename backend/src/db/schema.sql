@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  avatar_data TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -54,3 +55,38 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_diary ON reviews(diary_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_movie ON reviews(diary_id, movie_id);
+
+-- Indicações da dupla: uma linha por filme/diário, com autoria para remoção.
+CREATE TABLE IF NOT EXISTS recommendations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  diary_id INTEGER NOT NULL,
+  movie_id INTEGER NOT NULL,
+  added_by INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  UNIQUE (diary_id, movie_id),
+  FOREIGN KEY (diary_id) REFERENCES diaries(id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies(tmdb_id) ON DELETE CASCADE,
+  FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_recommendations_diary ON recommendations(diary_id, created_at);
+
+-- Favoritos individuais (máximo de 4 por usuário).
+CREATE TABLE IF NOT EXISTS favorite_movies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  movie_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  UNIQUE (user_id, movie_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies(tmdb_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_favorite_movies_user ON favorite_movies(user_id, created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_favorite_movies_limit
+BEFORE INSERT ON favorite_movies
+WHEN (SELECT COUNT(*) FROM favorite_movies WHERE user_id = NEW.user_id) >= 4
+BEGIN
+  SELECT RAISE(ABORT, 'favorite_limit_reached');
+END;

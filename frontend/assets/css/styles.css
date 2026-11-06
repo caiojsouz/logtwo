@@ -250,6 +250,21 @@ textarea {
   overflow: hidden;
 }
 
+.tab-button.is-active {
+  border-color: rgba(137, 160, 154, 0.3);
+  background: rgba(137, 160, 154, 0.1);
+  color: var(--logtwo-accent);
+}
+
+.tab-button.is-active [data-tab-count] {
+  background: rgba(137, 160, 154, 0.16);
+  color: var(--logtwo-accent);
+}
+
+[data-panel][hidden] {
+  display: none !important;
+}
+
 .search-row:hover .search-row-poster {
   transform: scale(1.05);
 }

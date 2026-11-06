@@ -3,6 +3,7 @@ export function serializeUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    avatarUrl: user.avatar_data || null,
     createdAt: user.created_at,
   };
 }
@@ -12,16 +13,27 @@ export function serializeDiary(diary, userId) {
 
   const isCreator = diary.user1_id === userId;
   const isActive = Boolean(diary.user2_id);
-  const members = [{ id: diary.user1_id, name: diary.user1_name }];
+  const members = [
+    {
+      id: diary.user1_id,
+      name: diary.user1_name,
+      avatarUrl: diary.user1_avatar || null,
+    },
+  ];
 
   if (diary.user2_id) {
-    members.push({ id: diary.user2_id, name: diary.user2_name });
+    members.push({
+      id: diary.user2_id,
+      name: diary.user2_name,
+      avatarUrl: diary.user2_avatar || null,
+    });
   }
 
   const partner = isActive
     ? {
         id: isCreator ? diary.user2_id : diary.user1_id,
         name: isCreator ? diary.user2_name : diary.user1_name,
+        avatarUrl: isCreator ? diary.user2_avatar || null : diary.user1_avatar || null,
       }
     : null;
 

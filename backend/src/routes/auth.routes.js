@@ -59,7 +59,10 @@ router.post(
     }
 
     const userId = Number(result.lastInsertRowid);
-    const user = await one('SELECT id, name, email, created_at FROM users WHERE id = ?', [userId]);
+    const user = await one(
+      'SELECT id, name, email, avatar_data, created_at FROM users WHERE id = ?',
+      [userId],
+    );
 
     setSessionCookie(res, userId);
 
