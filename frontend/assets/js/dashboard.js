@@ -44,6 +44,42 @@ const TAB_HASH = {
 const HASH_TAB = Object.fromEntries(
   Object.entries(TAB_HASH).map(([tab, hash]) => [hash, tab]),
 );
+const TAB_BY_ID = {
+  'tab-watched': 'watched',
+  'tab-watchlist': 'watchlist',
+  'tab-profile': 'profile',
+};
+const PANEL_BY_ID = {
+  'panel-watched': 'watched',
+  'panel-watchlist': 'watchlist',
+  'panel-profile': 'profile',
+};
+
+function normalizeNavigationMarkup() {
+  const buttons = document.querySelectorAll(
+    '#tab-watched, #tab-watchlist, #tab-profile, [data-tab]',
+  );
+
+  for (const button of buttons) {
+    if (!button.dataset.tab && TAB_BY_ID[button.id]) {
+      button.dataset.tab = TAB_BY_ID[button.id];
+    }
+  }
+
+  const panels = document.querySelectorAll(
+    '#panel-watched, #panel-watchlist, #panel-profile, [data-panel]',
+  );
+
+  for (const panel of panels) {
+    if (!panel.dataset.panel && PANEL_BY_ID[panel.id]) {
+      panel.dataset.panel = PANEL_BY_ID[panel.id];
+    }
+  }
+}
+
+function on(element, event, handler, options) {
+  if (element) element.addEventListener(event, handler, options);
+}
 
 const els = {
   duoAvatars: document.querySelector('#duo-avatars'),
@@ -82,6 +118,8 @@ const els = {
   modal: document.querySelector('#movie-modal'),
   modalContent: document.querySelector('#modal-content'),
 };
+
+normalizeNavigationMarkup();
 
 const FILM_ICON = `
   <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
@@ -504,16 +542,22 @@ function setActiveTab(tab, { push = false, animate = true } = {}) {
   const next = TAB_HASH[tab] ? tab : 'watched';
   state.activeTab = next;
 
-  for (const button of els.tabs.querySelectorAll('[data-tab]')) {
+  for (const button of document.querySelectorAll('[data-tab]')) {
     const active = button.dataset.tab === next;
+
     button.classList.toggle('is-active', active);
+    button.classList.toggle('text-zinc-400', !active);
+    button.classList.toggle('text-zinc-100', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   }
 
   for (const panel of document.querySelectorAll('[data-panel]')) {
     const active = panel.dataset.panel === next;
-    panel.hidden = !active;
+
+    panel.hidden = false;
+    panel.classList.toggle('hidden', !active);
+    panel.classList.toggle('block', active);
 
     if (active && animate) {
       panel.classList.remove('animate-fade-up');
@@ -815,19 +859,19 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 
-els.emptySearchButton.addEventListener('click', focusSearch);
-els.watchlistSearchButton.addEventListener('click', focusSearch);
+on(els.emptySearchButton, 'click', focusSearch);
+on(els.watchlistSearchButton, 'click', focusSearch);
 
-els.tabs.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-tab]');
-  if (!button) return;
-  setActiveTab(button.dataset.tab, { push: true });
-});
+for (const button of document.querySelectorAll('[data-tab]')) {
+  button.addEventListener('click', () => {
+    setActiveTab(button.dataset.tab, { push: true });
+  });
+}
 
-els.tabs.addEventListener('keydown', (event) => {
+on(els.tabs, 'keydown', (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
 
-  const buttons = [...els.tabs.querySelectorAll('[data-tab]')];
+  const buttons = [...document.querySelectorAll('[data-tab]')];
   const current = buttons.indexOf(document.activeElement);
 
   if (current < 0) return;
@@ -850,12 +894,12 @@ window.addEventListener('popstate', () => {
   setActiveTab(tabFromLocation());
 });
 
-els.moviesGrid.addEventListener('click', (event) => {
+on(els.moviesGrid, 'click', (event) => {
   const card = event.target.closest('[data-movie-id]');
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
 
-els.watchlistGrid.addEventListener('click', (event) => {
+on(els.watchlistGrid, 'click', (event) => {
   const remove = event.target.closest('[data-remove-recommendation]');
 
   if (remove) {
@@ -867,7 +911,7 @@ els.watchlistGrid.addEventListener('click', (event) => {
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
 
-els.favoritesGrid.addEventListener('click', (event) => {
+on(els.favoritesGrid, 'click', (event) => {
   const remove = event.target.closest('[data-remove-favorite]');
 
   if (remove) {
@@ -884,17 +928,17 @@ els.favoritesGrid.addEventListener('click', (event) => {
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
 
-els.profileAvatarButton.addEventListener('click', () => {
-  els.profileAvatarInput.click();
+on(els.profileAvatarButton, 'click', () => {
+  els.profileAvatarInput?.click();
 });
 
-els.profileAvatarInput.addEventListener('change', () => {
+on(els.profileAvatarInput, 'change', () => {
   const file = els.profileAvatarInput.files?.[0];
   if (file) uploadAvatar(file);
 });
 
-els.profileAvatarRemove.addEventListener('click', removeAvatar);
-els.profileNameForm.addEventListener('submit', saveProfileName);
+on(els.profileAvatarRemove, 'click', removeAvatar);
+on(els.profileNameForm, 'submit', saveProfileName);
 
 function modalCloseButton() {
   return `
@@ -1799,4 +1843,7 @@ async function boot() {
   }
 }
 
+// A navegação é ligada antes de qualquer chamada de API: as abas funcionam
+// mesmo se o carregamento dos dados falhar.
+setActiveTab('watched', { animate: false });
 boot();
