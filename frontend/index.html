@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full bg-zinc-950">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#070705" />
+    <meta
+      name="description"
+      content="logtwo. — um diário de filmes minimalista para duas pessoas, com notas individuais."
+    />
+    <title>logtwo. — diário de cinema para dois</title>
+    <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-config.js"></script>
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased">
+    <div class="cinema-bg grain relative min-h-screen overflow-hidden">
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -right-48 top-1/2 hidden h-[620px] w-[620px] -translate-y-1/2 sm:block"
+      >
+        <div class="absolute inset-0 rounded-full border border-panel/20"></div>
+        <div class="absolute inset-24 rounded-full border border-panel/10"></div>
+        <div class="absolute inset-48 rounded-full border border-accent/10"></div>
+        <div class="absolute inset-[264px] rounded-full bg-accent/[0.04] blur-3xl"></div>
+      </div>
+
+      <header
+        class="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 py-6 lg:px-10"
+      >
+        <p class="text-[9px] uppercase tracking-[0.32em] text-zinc-400/70">diário privado</p>
+        <p class="hidden text-[9px] uppercase tracking-[0.32em] text-zinc-400/70 sm:block">
+          cinema a dois
+        </p>
+      </header>
+
+      <main class="relative z-10 flex min-h-screen items-center justify-center px-5 py-28">
+        <section class="w-full max-w-[430px] animate-fade-up">
+          <div class="mb-9 text-center">
+            <h1 class="font-display text-[76px] leading-none tracking-[-0.045em] text-zinc-100 sm:text-[88px]">
+              logtwo<span class="text-accent">.</span>
+            </h1>
+            <p class="mt-4 text-[11px] uppercase tracking-[0.28em] text-zinc-400">
+              duas pessoas, um só diário
+            </p>
+          </div>
+
+          <div class="relative">
+            <div
+              aria-hidden="true"
+              class="absolute -inset-px rounded-[30px] bg-gradient-to-b from-accent/20 via-transparent to-transparent opacity-50 blur-[1px]"
+            ></div>
+
+            <div
+              class="relative rounded-[30px] border border-panel/40 bg-[#0b0d0c]/85 p-6 shadow-cinema backdrop-blur-xl sm:p-8"
+            >
+              <div class="grid grid-cols-2 border-b border-panel/30" role="tablist" aria-label="Acesso">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  data-mode="login"
+                  class="tab-button relative pb-4 text-sm font-medium text-zinc-100 transition-colors"
+                >
+                  Entrar
+                  <span
+                    data-tab-line
+                    class="absolute inset-x-0 -bottom-px h-px bg-accent"
+                  ></span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  data-mode="register"
+                  class="tab-button relative pb-4 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-100"
+                >
+                  Criar conta
+                  <span data-tab-line class="absolute inset-x-0 -bottom-px hidden h-px bg-accent"></span>
+                </button>
+              </div>
+
+              <p id="form-intro" class="mt-6 text-xs leading-relaxed text-zinc-400">
+                Entre para voltar à estante de vocês.
+              </p>
+
+              <form id="auth-form" class="mt-5 space-y-5" novalidate>
+                <div id="name-field" class="hidden">
+                  <label for="name" class="micro-label mb-2 block">seu nome</label>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autocomplete="name"
+                    maxlength="60"
+                    placeholder="Como sua dupla te chama"
+                    class="w-full rounded-xl border border-panel/40 bg-base/40 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/70 focus:bg-base/60 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label for="email" class="micro-label mb-2 block">e-mail</label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    maxlength="254"
+                    required
+                    placeholder="voce@email.com"
+                    class="w-full rounded-xl border border-panel/40 bg-base/40 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/70 focus:bg-base/60 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label for="password" class="micro-label mb-2 block">senha</label>
+                  <div class="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      autocomplete="current-password"
+                      minlength="8"
+                      maxlength="72"
+                      required
+                      placeholder="Mínimo de 8 caracteres"
+                      class="w-full rounded-xl border border-panel/40 bg-base/40 py-3 pl-4 pr-12 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/70 focus:bg-base/60 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      id="toggle-password"
+                      aria-label="Mostrar senha"
+                      class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-zinc-400 transition hover:text-zinc-100"
+                    >
+                      <svg
+                        id="eye-open"
+                        class="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                        <circle cx="12" cy="12" r="2.6" />
+                      </svg>
+                      <svg
+                        id="eye-closed"
+                        class="hidden h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M3 3l18 18M10.6 6.2A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-2.3 3M6.3 7.3A17 17 0 0 0 2.5 12s3.5 6 9.5 6c1.4 0 2.7-.3 3.8-.9" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  id="form-error"
+                  role="alert"
+                  class="hidden items-start gap-2 rounded-xl border border-danger/30 bg-danger/[0.06] px-3.5 py-3 text-xs leading-relaxed text-danger"
+                >
+                  <span id="form-error-text"></span>
+                </div>
+
+                <button
+                  id="auth-submit"
+                  type="submit"
+                  class="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full bg-accent px-5 py-3.5 text-sm font-semibold text-base transition hover:bg-light disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span id="submit-label">Entrar no diário</span>
+                  <span id="submit-spinner" class="spinner hidden"></span>
+                </button>
+              </form>
+
+              <p id="mode-hint" class="mt-6 text-center text-[11px] leading-relaxed text-zinc-400">
+                Ainda não tem um diário?
+                <button type="button" id="hint-switch" class="text-zinc-100 underline decoration-panel underline-offset-4 transition hover:text-accent">
+                  Crie sua conta primeiro
+                </button>
+              </p>
+            </div>
+          </div>
+
+          <p class="mt-8 text-center text-[10px] leading-relaxed text-zinc-400/60">
+            Feito para quem assiste junto — e discorda do final.
+          </p>
+        </section>
+      </main>
+
+      <footer class="absolute inset-x-0 bottom-0 z-10 flex justify-center px-6 py-5">
+        <p class="text-[9px] uppercase tracking-[0.3em] text-zinc-400/50">
+          logtwo. © <span id="current-year">2026</span>
+        </p>
+      </footer>
+    </div>
+
+    <noscript>
+      <p class="fixed inset-x-0 bottom-0 z-[130] bg-panel px-4 py-3 text-center text-xs text-zinc-100">
+        O logtwo. precisa de JavaScript ativado para funcionar.
+      </p>
+    </noscript>
+
+    <div data-boot class="boot-screen">
+      <div class="flex flex-col items-center gap-5">
+        <p class="font-display text-3xl text-zinc-100">logtwo<span class="text-accent">.</span></p>
+        <div class="h-px w-28 overflow-hidden bg-panel/50">
+          <div class="boot-bar"></div>
+        </div>
+        <p data-boot-status class="text-[10px] uppercase tracking-[0.24em] text-zinc-400">
+          Abrindo o diário
+        </p>
+      </div>
+    </div>
+
+    <script src="/assets/js/config.js"></script>
+    <script type="module" src="/assets/js/auth-page.js"></script>
+  </body>
+</html>
