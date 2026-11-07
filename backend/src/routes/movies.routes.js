@@ -64,6 +64,23 @@ router.get(
   }),
 );
 
+router.delete(
+  '/:id/watch',
+  asyncHandler(async (req, res) => {
+    const movieId = parseMovieId(req.params.id);
+    const result = await run('DELETE FROM reviews WHERE diary_id = ? AND movie_id = ?', [
+      req.diary.id,
+      movieId,
+    ]);
+
+    if (!result.rowsAffected) {
+      throw new AppError(404, 'Esse filme não está mais nos assistidos.');
+    }
+
+    res.json({ ok: true, movieId });
+  }),
+);
+
 router.put(
   '/:id/review',
   asyncHandler(async (req, res) => {

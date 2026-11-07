@@ -137,6 +137,24 @@ const PLUS_ICON = `
     <path d="M12 5v14M5 12h14"></path>
   </svg>`;
 
+const TRASH_ICON = `
+  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+    <path d="M4 7h16M9 4h6M7 7l1 13h8l1-13M10 11v5M14 11v5"></path>
+  </svg>`;
+
+function cardDeleteButton(attribute, movie, suffix) {
+  return `
+    <button
+      type="button"
+      ${attribute}="${movie.tmdbId}"
+      aria-label="Remover ${escapeHtml(movie.title)} ${suffix}"
+      title="Remover ${suffix}"
+      class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300/80 opacity-70 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+    >
+      ${TRASH_ICON}
+    </button>`;
+}
+
 const formatAverage = (value) =>
   value === null || value === undefined ? '—' : Number(value).toFixed(1).replace('.', ',');
 
@@ -329,7 +347,7 @@ function renderMovieCard(movie, index) {
   const delay = Math.min(index * 45, 360);
 
   return `
-    <article class="card-enter" style="animation-delay:${delay}ms">
+    <article class="card-enter group relative" style="animation-delay:${delay}ms">
       <button
         type="button"
         data-movie-id="${movie.tmdbId}"
@@ -360,6 +378,7 @@ function renderMovieCard(movie, index) {
           </div>
         </div>
       </button>
+      ${cardDeleteButton('data-delete-watched', movie, 'dos assistidos')}
     </article>`;
 }
 
@@ -380,7 +399,6 @@ function renderShelf() {
 }
 
 function renderWatchlistCard(movie, index) {
-  const own = movie.recommendedBy?.id === state.me?.id;
   const recommender = movie.recommendedBy?.name || 'alguém da dupla';
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
   const meta = [movie.year, runtime].filter(Boolean).join(' · ') || 'ficha do TMDB';
@@ -388,7 +406,7 @@ function renderWatchlistCard(movie, index) {
   const delay = Math.min(index * 45, 360);
 
   return `
-    <article class="card-enter" style="animation-delay:${delay}ms">
+    <article class="card-enter group relative" style="animation-delay:${delay}ms">
       <button
         type="button"
         data-movie-id="${movie.tmdbId}"
@@ -416,22 +434,11 @@ function renderWatchlistCard(movie, index) {
         </div>
       </button>
 
-      <div class="mt-2.5 flex items-center justify-between gap-2 px-0.5">
-        <p class="min-w-0 truncate text-[9px] uppercase tracking-[0.12em] text-zinc-400" title="Indicado por ${escapeHtml(recommender)}">
-          por <span class="text-accent/80">${escapeHtml(firstName(recommender))}</span>${date ? ` · ${escapeHtml(date)}` : ''}
-        </p>
-        ${
-          own
-            ? `<button
-                 type="button"
-                 data-remove-recommendation="${movie.tmdbId}"
-                 class="shrink-0 text-[9px] uppercase tracking-[0.1em] text-zinc-400 transition hover:text-danger"
-               >
-                 remover
-               </button>`
-            : ''
-        }
-      </div>
+      ${cardDeleteButton('data-remove-recommendation', movie, 'das indicações')}
+
+      <p class="mt-2.5 min-w-0 truncate px-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-400" title="Indicado por ${escapeHtml(recommender)}">
+        por <span class="text-accent/80">${escapeHtml(firstName(recommender))}</span>${date ? ` · ${escapeHtml(date)}` : ''}
+      </p>
     </article>`;
 }
 
@@ -895,6 +902,13 @@ window.addEventListener('popstate', () => {
 });
 
 on(els.moviesGrid, 'click', (event) => {
+  const remove = event.target.closest('[data-delete-watched]');
+
+  if (remove) {
+    deleteWatchedFromShelf(Number(remove.dataset.deleteWatched));
+    return;
+  }
+
   const card = event.target.closest('[data-movie-id]');
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
@@ -1008,20 +1022,13 @@ function modalActionsMarkup() {
 
   const recommendation = state.watchlist.find((item) => item.tmdbId === movie.tmdbId);
   const favorite = isFavorite(movie.tmdbId);
-  const ownRecommendation = recommendation?.recommendedBy?.id === state.me?.id;
   const busy = state.actionBusy;
 
-  const recLabel = recommendation
-    ? ownRecommendation
-      ? 'Remover indicação'
-      : `Indicado por ${firstName(recommendation.recommendedBy?.name || 'sua dupla')}`
-    : 'Indicar filme';
+  const recLabel = recommendation ? 'Remover indicação' : 'Indicar filme';
   const recTitle = recommendation
-    ? ownRecommendation
-      ? 'Remover a sua indicação'
-      : 'Só quem indicou o filme pode removê-lo.'
+    ? 'Remover esta indicação da dupla'
     : 'Sugerir este filme para a dupla';
-  const recDisabled = busy || Boolean(recommendation && !ownRecommendation);
+  const recDisabled = busy;
 
   const favoriteFull = !favorite && state.favorites.length >= MAX_FAVORITES;
   const favLabel = favorite
@@ -1299,6 +1306,15 @@ async function refreshAfterReview(fallbackMovie) {
   }
 }
 
+async function syncDiaryState() {
+  try {
+    await loadDashboard();
+    renderAll();
+  } catch (error) {
+    console.warn('[logtwo] Não foi possível sincronizar o diário; mantendo o estado local.', error);
+  }
+}
+
 async function saveReview() {
   if (!state.activeMovie || state.isSaving) return;
 
@@ -1349,10 +1365,7 @@ async function toggleRecommendation() {
 
   const existing = state.watchlist.find((item) => item.tmdbId === movie.tmdbId);
 
-  if (existing && existing.recommendedBy?.id !== state.me?.id) {
-    toast('Só quem indicou o filme pode removê-lo.', 'error');
-    return;
-  }
+  if (existing && !window.confirm('Tem certeza que deseja remover este item?')) return;
 
   state.actionBusy = true;
   updateModalActions();
@@ -1382,6 +1395,7 @@ async function toggleRecommendation() {
 
     renderWatchlist();
     renderTabs();
+    await syncDiaryState();
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -1440,6 +1454,34 @@ async function toggleFavorite() {
   }
 }
 
+async function deleteWatchedFromShelf(movieId) {
+  if (state.actionBusy) return;
+
+  const movie = state.movies.find((item) => item.tmdbId === movieId);
+
+  if (!movie) return;
+
+  if (!window.confirm('Tem certeza que deseja remover este item?')) return;
+
+  state.actionBusy = true;
+
+  try {
+    await api(`/api/movies/${movieId}/watch`, { method: 'DELETE' });
+    state.movies = state.movies.filter((item) => item.tmdbId !== movieId);
+
+    if (state.activeMovie?.tmdbId === movieId) closeModal();
+
+    renderShelf();
+    renderTabs();
+    toast('Filme removido dos assistidos.');
+    await syncDiaryState();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.actionBusy = false;
+  }
+}
+
 async function removeRecommendationFromShelf(movieId) {
   if (state.actionBusy) return;
 
@@ -1447,10 +1489,7 @@ async function removeRecommendationFromShelf(movieId) {
 
   if (!existing) return;
 
-  if (existing.recommendedBy?.id !== state.me?.id) {
-    toast('Só quem indicou o filme pode removê-lo.', 'error');
-    return;
-  }
+  if (!window.confirm('Tem certeza que deseja remover este item?')) return;
 
   state.actionBusy = true;
 
@@ -1460,6 +1499,7 @@ async function removeRecommendationFromShelf(movieId) {
     renderWatchlist();
     renderTabs();
     toast('Indicação removida.');
+    await syncDiaryState();
   } catch (error) {
     toast(error.message, 'error');
   } finally {

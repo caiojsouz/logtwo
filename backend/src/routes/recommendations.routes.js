@@ -101,16 +101,12 @@ router.delete(
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.params.movieId);
     const row = await one(
-      'SELECT id, added_by FROM recommendations WHERE diary_id = ? AND movie_id = ?',
+      'SELECT id FROM recommendations WHERE diary_id = ? AND movie_id = ?',
       [req.diary.id, movieId],
     );
 
     if (!row) {
       throw new AppError(404, 'Essa indicação não existe mais.');
-    }
-
-    if (row.added_by !== req.user.id) {
-      throw new AppError(403, 'Só quem indicou o filme pode removê-lo.');
     }
 
     await run('DELETE FROM recommendations WHERE id = ?', [row.id]);

@@ -69,7 +69,8 @@ Abra `http://localhost:3000`. O Express serve a API e o frontend no mesmo host, 
 | --- | --- | --- |
 | `GET` | `/api/recommendations` | lista as indicações do diário com quem indicou |
 | `POST` | `/api/recommendations` | indica um filme (`{ "movieId": 550 }`) |
-| `DELETE` | `/api/recommendations/:movieId` | remove uma indicação feita por você |
+| `DELETE` | `/api/recommendations/:movieId` | remove uma indicação da dupla |
+| `DELETE` | `/api/movies/:id/watch` | remove um filme dos assistidos (apaga as avaliações da dupla) |
 | `GET` | `/api/profile` | perfil logado + favoritos |
 | `PATCH` | `/api/profile` | atualiza o nome (`{ "name": "..." }`) |
 | `POST` | `/api/profile/avatar` | envia a foto como `multipart/form-data` no campo `avatar` |
@@ -248,7 +249,8 @@ O rewrite mantém as chamadas em `/api` no mesmo domínio da Vercel, então o co
 - Senhas com bcrypt (cost 12) e e-mail único.
 - Sessão JWT de 7 dias em cookie `HttpOnly`, `Secure` em produção.
 - A avaliação é sempre gravada com o `user_id` do JWT — o body não aceita outro usuário.
-- Indicações e favoritos só podem ser removidos pelo dono; o limite de 4 favoritos é validado na rota e por um trigger no SQLite.
+- Indicações e assistidos podem ser removidos por qualquer pessoa da dupla; favoritos só pelo dono. O limite de 4 favoritos é validado na rota e por um trigger no SQLite.
+- As horas assistidas somam apenas filmes que saíram das indicações: um título ainda na fila não entra no total mesmo que alguém já tenha dado nota.
 - Upload de avatar em memória, com whitelist PNG/JPG/WEBP/GIF, verificação de magic bytes, limite de 2 MB e SVG bloqueado.
 - Rate limit em autenticação, busca e perfil, validação de entrada e SQL parametrizado.
 - Código de convite exposto apenas para quem criou o diário enquanto ele está pendente.
