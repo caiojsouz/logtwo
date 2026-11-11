@@ -60,7 +60,7 @@ router.post(
 
     const userId = Number(result.lastInsertRowid);
     const user = await one(
-      `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+      `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, created_at
          FROM users
         WHERE id = ?`,
       [userId],

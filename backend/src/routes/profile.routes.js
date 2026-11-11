@@ -12,7 +12,6 @@ const router = express.Router();
 const MAX_FAVORITES = 4;
 const MAX_AVATAR_DATA_URL = 3 * 1024 * 1024;
 const MAX_SONG_URL_LENGTH = 2048;
-const MAX_SONG_TITLE_LENGTH = 200;
 
 router.use(requireAuth);
 
@@ -35,20 +34,6 @@ function parseSongUrl(rawValue, label) {
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new AppError(400, `Use um link http(s) para ${label}.`);
-  }
-
-  return value;
-}
-
-function parseSongTitle(rawValue) {
-  const value = String(rawValue ?? '')
-    .trim()
-    .replace(/\s+/g, ' ');
-
-  if (!value) return null;
-
-  if (value.length > MAX_SONG_TITLE_LENGTH) {
-    throw new AppError(400, 'O título da música é longo demais.');
   }
 
   return value;
@@ -83,7 +68,7 @@ async function listFavorites(userId) {
 
 async function loadUser(userId) {
   return one(
-    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, created_at
        FROM users
       WHERE id = ?`,
     [userId],
@@ -92,7 +77,7 @@ async function loadUser(userId) {
 
 async function loadPublicUser(userId) {
   return one(
-    `SELECT id, name, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+    `SELECT id, name, avatar_data, profile_song_audio_url, profile_song_cover_url, created_at
        FROM users
       WHERE id = ?`,
     [userId],
@@ -136,9 +121,8 @@ router.put(
     const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
     const hasAudio = Object.prototype.hasOwnProperty.call(body, 'profileSongAudioUrl');
     const hasCover = Object.prototype.hasOwnProperty.call(body, 'profileSongCoverUrl');
-    const hasTitle = Object.prototype.hasOwnProperty.call(body, 'profileSongTitle');
 
-    if (!hasName && !hasAudio && !hasCover && !hasTitle) {
+    if (!hasName && !hasAudio && !hasCover) {
       throw new AppError(400, 'Nada para atualizar no perfil.');
     }
 
@@ -166,11 +150,6 @@ router.put(
     if (hasCover) {
       fields.push('profile_song_cover_url = ?');
       values.push(parseSongUrl(body.profileSongCoverUrl, 'capa da música'));
-    }
-
-    if (hasTitle) {
-      fields.push('profile_song_title = ?');
-      values.push(parseSongTitle(body.profileSongTitle));
     }
 
     values.push(req.user.id);

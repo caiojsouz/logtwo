@@ -73,7 +73,7 @@ Abra `http://localhost:3000`. O Express serve a API e o frontend no mesmo host, 
 | `DELETE` | `/api/movies/:id/watch` | remove um filme dos assistidos (apaga as avaliações da dupla) |
 | `GET` | `/api/profile` | perfil logado + favoritos |
 | `PATCH` | `/api/profile` | atualiza o nome (`{ "name": "..." }`) |
-| `PUT` | `/api/profile` | atualiza nome, áudio, capa e título da música (`{ "name", "profileSongAudioUrl", "profileSongCoverUrl", "profileSongTitle" }`) |
+| `PUT` | `/api/profile` | atualiza nome, áudio e capa da música (`{ "name", "profileSongAudioUrl", "profileSongCoverUrl" }`) |
 | `POST` | `/api/profile/avatar` | envia a foto como `multipart/form-data` no campo `avatar` |
 | `GET` | `/api/profile/:userId` | perfil público da dupla (sem e-mail) + favoritos |
 | `DELETE` | `/api/profile/avatar` | remove a foto |
