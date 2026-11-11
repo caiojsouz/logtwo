@@ -274,6 +274,23 @@ textarea {
   background: linear-gradient(145deg, rgba(137, 160, 154, 0.14), rgba(62, 75, 81, 0.12) 45%, rgba(7, 7, 5, 0.9));
 }
 
+.roulette-winner {
+  transform: scale(1.05);
+  border-color: rgba(137, 160, 154, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(137, 160, 154, 0.5),
+    0 24px 80px -32px rgba(137, 160, 154, 0.45);
+}
+
+.roulette-winner img {
+  transform: scale(1.03);
+}
+
+/* Garante o giro do disco mesmo se o JIT do CDN demorar a gerar a classe. */
+.animate-\[spin_4s_linear_infinite\] {
+  animation: logtwo-spin 4s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
