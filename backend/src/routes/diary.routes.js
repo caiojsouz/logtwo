@@ -33,15 +33,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const diaryId = req.diary.id;
 
-    // Só conta o que a dupla assistiu junto: um filme ainda marcado como
-    // indicação não pode entrar nas horas mesmo que alguém já tenha dado nota.
+    // Estatísticas leem estritamente a aba Assistidos (tabela reviews).
+    // Favoritos e indicações nunca entram no total nem nas horas.
     const totals = await one(
       `SELECT COUNT(*) AS movies_count,
               COALESCE(SUM(m.runtime), 0) AS minutes
          FROM movies m
-        WHERE m.tmdb_id IN (SELECT movie_id FROM reviews WHERE diary_id = ?)
-          AND m.tmdb_id NOT IN (SELECT movie_id FROM recommendations WHERE diary_id = ?)`,
-      [diaryId, diaryId],
+        WHERE m.tmdb_id IN (SELECT DISTINCT movie_id FROM reviews WHERE diary_id = ?)`,
+      [diaryId],
     );
 
     const perUser = await all(

@@ -1,9 +1,12 @@
-export function serializeUser(user) {
+export function serializeUser(user, { includeEmail = true } = {}) {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    ...(includeEmail ? { email: user.email } : {}),
     avatarUrl: user.avatar_data || null,
+    profileSongAudioUrl: user.profile_song_audio_url || null,
+    profileSongCoverUrl: user.profile_song_cover_url || null,
+    profileSongTitle: user.profile_song_title || null,
     createdAt: user.created_at,
   };
 }

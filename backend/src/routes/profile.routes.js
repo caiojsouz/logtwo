@@ -3,6 +3,7 @@ import { all, one, run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import { serializeUser } from '../lib/serializers.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireActiveDiary } from '../middleware/diary.js';
 import { profileLimiter } from '../middleware/rateLimits.js';
 import { avatarUpload, detectImageMime, MAX_AVATAR_BYTES } from '../middleware/upload.js';
 import { ensureMovie, serializeMovie } from '../services/movies.js';
@@ -10,8 +11,48 @@ import { ensureMovie, serializeMovie } from '../services/movies.js';
 const router = express.Router();
 const MAX_FAVORITES = 4;
 const MAX_AVATAR_DATA_URL = 3 * 1024 * 1024;
+const MAX_SONG_URL_LENGTH = 2048;
+const MAX_SONG_TITLE_LENGTH = 200;
 
 router.use(requireAuth);
+
+function parseSongUrl(rawValue, label) {
+  const value = String(rawValue ?? '').trim();
+
+  if (!value) return null;
+
+  if (value.length > MAX_SONG_URL_LENGTH) {
+    throw new AppError(400, `O link de ${label} é longo demais.`);
+  }
+
+  let url;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new AppError(400, `Informe um link válido para ${label}.`);
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new AppError(400, `Use um link http(s) para ${label}.`);
+  }
+
+  return value;
+}
+
+function parseSongTitle(rawValue) {
+  const value = String(rawValue ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!value) return null;
+
+  if (value.length > MAX_SONG_TITLE_LENGTH) {
+    throw new AppError(400, 'O título da música é longo demais.');
+  }
+
+  return value;
+}
 
 function parseMovieId(rawId) {
   if (!/^\d+$/.test(String(rawId))) {
@@ -42,7 +83,18 @@ async function listFavorites(userId) {
 
 async function loadUser(userId) {
   return one(
-    'SELECT id, name, email, avatar_data, created_at FROM users WHERE id = ?',
+    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+       FROM users
+      WHERE id = ?`,
+    [userId],
+  );
+}
+
+async function loadPublicUser(userId) {
+  return one(
+    `SELECT id, name, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+       FROM users
+      WHERE id = ?`,
     [userId],
   );
 }
@@ -72,6 +124,59 @@ router.patch(
     await run('UPDATE users SET name = ? WHERE id = ?', [name, req.user.id]);
     const user = await loadUser(req.user.id);
 
+    res.json({ user: serializeUser(user) });
+  }),
+);
+
+router.put(
+  '/',
+  profileLimiter,
+  asyncHandler(async (req, res) => {
+    const body = req.body ?? {};
+    const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
+    const hasAudio = Object.prototype.hasOwnProperty.call(body, 'profileSongAudioUrl');
+    const hasCover = Object.prototype.hasOwnProperty.call(body, 'profileSongCoverUrl');
+    const hasTitle = Object.prototype.hasOwnProperty.call(body, 'profileSongTitle');
+
+    if (!hasName && !hasAudio && !hasCover && !hasTitle) {
+      throw new AppError(400, 'Nada para atualizar no perfil.');
+    }
+
+    const fields = [];
+    const values = [];
+
+    if (hasName) {
+      const name = String(body.name ?? '')
+        .trim()
+        .replace(/\s+/g, ' ');
+
+      if (name.length < 2 || name.length > 60) {
+        throw new AppError(400, 'Informe um nome entre 2 e 60 caracteres.');
+      }
+
+      fields.push('name = ?');
+      values.push(name);
+    }
+
+    if (hasAudio) {
+      fields.push('profile_song_audio_url = ?');
+      values.push(parseSongUrl(body.profileSongAudioUrl, 'áudio da música'));
+    }
+
+    if (hasCover) {
+      fields.push('profile_song_cover_url = ?');
+      values.push(parseSongUrl(body.profileSongCoverUrl, 'capa da música'));
+    }
+
+    if (hasTitle) {
+      fields.push('profile_song_title = ?');
+      values.push(parseSongTitle(body.profileSongTitle));
+    }
+
+    values.push(req.user.id);
+    await run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+
+    const user = await loadUser(req.user.id);
     res.json({ user: serializeUser(user) });
   }),
 );
@@ -181,6 +286,31 @@ router.delete(
     }
 
     res.json({ ok: true });
+  }),
+);
+
+router.get(
+  '/:userId(\\d+)',
+  requireActiveDiary,
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.userId);
+    const isMember = [req.diary.user1_id, req.diary.user2_id].includes(userId);
+
+    if (!Number.isSafeInteger(userId) || userId <= 0 || !isMember) {
+      throw new AppError(403, 'Esse perfil não faz parte do seu diário.');
+    }
+
+    const user = await loadPublicUser(userId);
+
+    if (!user) {
+      throw new AppError(404, 'Perfil não encontrado.');
+    }
+
+    res.json({
+      user: serializeUser(user, { includeEmail: false }),
+      favorites: await listFavorites(userId),
+      isSelf: userId === req.user.id,
+    });
   }),
 );
 

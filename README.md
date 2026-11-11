@@ -7,7 +7,7 @@ Diário de filmes minimalista para duas pessoas: um único histórico compartilh
 - **Banco:** Turso (libSQL/SQLite)
 - **Auth:** JWT em cookie HTTP-Only + bcrypt
 - **Metadados:** TMDB (busca, pôsteres, duração)
-- **Extras:** indicações da dupla, até 4 filmes favoritos por pessoa e foto de perfil persistida no banco
+- **Extras:** indicações da dupla, roleta de sorteio, até 4 filmes favoritos por pessoa, foto de perfil e player de música em vinil
 
 ---
 
@@ -73,7 +73,9 @@ Abra `http://localhost:3000`. O Express serve a API e o frontend no mesmo host, 
 | `DELETE` | `/api/movies/:id/watch` | remove um filme dos assistidos (apaga as avaliações da dupla) |
 | `GET` | `/api/profile` | perfil logado + favoritos |
 | `PATCH` | `/api/profile` | atualiza o nome (`{ "name": "..." }`) |
+| `PUT` | `/api/profile` | atualiza nome, áudio, capa e título da música (`{ "name", "profileSongAudioUrl", "profileSongCoverUrl", "profileSongTitle" }`) |
 | `POST` | `/api/profile/avatar` | envia a foto como `multipart/form-data` no campo `avatar` |
+| `GET` | `/api/profile/:userId` | perfil público da dupla (sem e-mail) + favoritos |
 | `DELETE` | `/api/profile/avatar` | remove a foto |
 | `GET` | `/api/profile/favorites` | lista os favoritos |
 | `POST` | `/api/profile/favorites` | adiciona favorito (`{ "movieId": 550 }`), limite de 4 |
@@ -250,7 +252,7 @@ O rewrite mantém as chamadas em `/api` no mesmo domínio da Vercel, então o co
 - Sessão JWT de 7 dias em cookie `HttpOnly`, `Secure` em produção.
 - A avaliação é sempre gravada com o `user_id` do JWT — o body não aceita outro usuário.
 - Indicações e assistidos podem ser removidos por qualquer pessoa da dupla; favoritos só pelo dono. O limite de 4 favoritos é validado na rota e por um trigger no SQLite.
-- As horas assistidas somam apenas filmes que saíram das indicações: um título ainda na fila não entra no total mesmo que alguém já tenha dado nota.
+- Estatísticas de tempo e total leem estritamente a aba Assistidos (tabela `reviews`): favoritos e indicações nunca entram no total nem nas horas.
 - Upload de avatar em memória, com whitelist PNG/JPG/WEBP/GIF, verificação de magic bytes, limite de 2 MB e SVG bloqueado.
 - Rate limit em autenticação, busca e perfil, validação de entrada e SQL parametrizado.
 - Código de convite exposto apenas para quem criou o diário enquanto ele está pendente.
