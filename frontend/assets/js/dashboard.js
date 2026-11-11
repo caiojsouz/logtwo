@@ -24,6 +24,16 @@ const state = {
   watchlist: [],
   favorites: [],
   activeTab: 'watched',
+  profileUserId: null,
+  profileUser: null,
+  profileFavorites: [],
+  partnerProfiles: {},
+  profileLoading: false,
+  audio: null,
+  audioProfileId: null,
+  rouletteTimer: null,
+  rouletteMovies: [],
+  rouletteWinner: null,
   searchResults: [],
   searchAbort: null,
   modalAbort: null,
@@ -36,6 +46,9 @@ const state = {
 };
 
 const MAX_FAVORITES = 4;
+const SPIN_CLASS = 'animate-[spin_4s_linear_infinite]';
+const ROULETTE_TICK_MS = 100;
+const ROULETTE_DURATION_MS = 3000;
 const TAB_HASH = {
   watched: '#assistidos',
   watchlist: '#indicacoes',
@@ -110,6 +123,28 @@ const els = {
   profileNameInput: document.querySelector('#profile-name-input'),
   favoritesCount: document.querySelector('#favorites-count'),
   favoritesGrid: document.querySelector('#favorites-grid'),
+  profileLoading: document.querySelector('#profile-loading'),
+  profileBody: document.querySelector('#profile-body'),
+  profileEyebrow: document.querySelector('#profile-eyebrow'),
+  profileRole: document.querySelector('#profile-role'),
+  profileViewSelf: document.querySelector('#profile-view-self'),
+  profileEdit: document.querySelector('#profile-edit'),
+  profileMusicDisc: document.querySelector('#profile-music-disc'),
+  profileMusicCover: document.querySelector('#profile-music-cover'),
+  profileMusicLabel: document.querySelector('#profile-music-label'),
+  profileMusicStatus: document.querySelector('#profile-music-status'),
+  profileSongForm: document.querySelector('#profile-song-form'),
+  profileSongAudioInput: document.querySelector('#profile-song-audio-input'),
+  profileSongCoverInput: document.querySelector('#profile-song-cover-input'),
+  profileFavoritesTitle: document.querySelector('#profile-favorites-title'),
+  profileFavoritesHint: document.querySelector('#profile-favorites-hint'),
+  rouletteButton: document.querySelector('#watchlist-roulette-btn'),
+  rouletteModal: document.querySelector('#roulette-modal'),
+  roulettePoster: document.querySelector('#roulette-poster'),
+  rouletteMovieTitle: document.querySelector('#roulette-movie-title'),
+  rouletteMovieMeta: document.querySelector('#roulette-movie-meta'),
+  rouletteStatus: document.querySelector('#roulette-status'),
+  rouletteFooter: document.querySelector('#roulette-footer'),
   searchWrap: document.querySelector('#search-wrap'),
   searchInput: document.querySelector('#search-input'),
   searchClear: document.querySelector('#search-clear'),
@@ -140,6 +175,13 @@ const PLUS_ICON = `
 const TRASH_ICON = `
   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
     <path d="M4 7h16M9 4h6M7 7l1 13h8l1-13M10 11v5M14 11v5"></path>
+  </svg>`;
+
+const MUSIC_ICON = `
+  <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path d="M9 18V5l10-2v13"></path>
+    <circle cx="6.5" cy="18" r="2.5"></circle>
+    <circle cx="16.5" cy="16" r="2.5"></circle>
   </svg>`;
 
 function cardDeleteButton(attribute, movie, suffix) {
@@ -242,9 +284,15 @@ function renderSidebar() {
   els.duoAvatars.innerHTML = members
     .map(
       (member, index) => `
-        <div class="shrink-0" title="${escapeHtml(member.name)}">
+        <button
+          type="button"
+          data-profile-user="${member.id}"
+          title="Ver perfil de ${escapeHtml(member.name)}"
+          aria-label="Ver perfil de ${escapeHtml(member.name)}"
+          class="shrink-0 rounded-full transition hover:-translate-y-0.5 hover:opacity-90"
+        >
           ${avatarMarkup(member, { tone: memberTone(index) })}
-        </div>`,
+        </button>`,
     )
     .join('');
 
@@ -269,12 +317,19 @@ function renderSidebar() {
 
       return `
         <div class="flex items-center gap-2.5" title="${info.count} ${info.count === 1 ? 'avaliação' : 'avaliações'}">
-          ${avatarMarkup(member, {
-            size: 'h-6 w-6',
-            textSize: 'text-[8px]',
-            tone: memberTone(index),
-            border: '',
-          })}
+          <button
+            type="button"
+            data-profile-user="${member.id}"
+            aria-label="Ver perfil de ${escapeHtml(member.name)}"
+            class="shrink-0 rounded-full transition hover:opacity-80"
+          >
+            ${avatarMarkup(member, {
+              size: 'h-6 w-6',
+              textSize: 'text-[8px]',
+              tone: memberTone(index),
+              border: '',
+            })}
+          </button>
           <span class="min-w-0 flex-1 truncate text-[11px] text-zinc-400">${escapeHtml(memberLabel(member))}</span>
           <span class="flex items-center gap-1 text-accent">
             ${starSvg('h-2.5 w-2.5')}
@@ -285,11 +340,20 @@ function renderSidebar() {
     .join('');
 
   if (state.me) {
-    els.sidebarUserAvatar.innerHTML = avatarMarkup(state.me, {
-      size: 'h-9 w-9',
-      tone: 'bg-accent/15 text-accent',
-      border: 'border border-panel/25',
-    });
+    els.sidebarUserAvatar.innerHTML = `
+      <button
+        type="button"
+        data-profile-user="${state.me.id}"
+        title="Ver meu perfil"
+        aria-label="Ver meu perfil"
+        class="block rounded-full transition hover:opacity-90"
+      >
+        ${avatarMarkup(state.me, {
+          size: 'h-9 w-9',
+          tone: 'bg-accent/15 text-accent',
+          border: 'border border-panel/25',
+        })}
+      </button>`;
     els.sidebarUserName.textContent = state.me.name;
     els.sidebarUserEmail.textContent = state.me.email;
   }
@@ -449,6 +513,15 @@ function renderWatchlist() {
     count === 0
       ? 'Nenhuma indicação ainda'
       : `${count} ${count === 1 ? 'filme esperando' : 'filmes esperando'} vocês`;
+
+  if (els.rouletteButton) {
+    const canSpin = count >= 2;
+    els.rouletteButton.disabled = !canSpin;
+    els.rouletteButton.title = canSpin
+      ? 'Sortear um filme da lista'
+      : 'Adicione pelo menos 2 indicações para sortear';
+  }
+
   els.watchlistGrid.classList.toggle('hidden', count === 0);
   els.watchlistEmpty.classList.toggle('hidden', count > 0);
 
@@ -460,8 +533,130 @@ function renderWatchlist() {
   els.watchlistGrid.innerHTML = state.watchlist.map(renderWatchlistCard).join('');
 }
 
-function renderFavoriteSlot(movie) {
+function roulettePosterMarkup(movie) {
+  if (movie.posterUrl) {
+    return `<img src="${escapeHtml(movie.posterUrl)}" alt="" class="h-full w-full object-cover" />`;
+  }
+
+  return `
+    <div class="poster-sheen flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center">
+      <span class="text-accent/50">${FILM_ICON}</span>
+      <span class="line-clamp-4 font-display text-lg leading-tight text-zinc-100/75">
+        ${escapeHtml(movie.title)}
+      </span>
+    </div>`;
+}
+
+function setRouletteFrame(movie, { final = false } = {}) {
+  if (!movie) return;
+
+  els.roulettePoster.innerHTML = roulettePosterMarkup(movie);
+  els.roulettePoster.classList.toggle('roulette-winner', final);
+  els.rouletteMovieTitle.textContent = movie.title || '';
+  els.rouletteMovieTitle.title = movie.title || '';
+
+  const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
+  els.rouletteMovieMeta.textContent = [movie.year, runtime].filter(Boolean).join(' · ');
+}
+
+function finishRoulette() {
+  if (state.rouletteTimer !== null) {
+    window.clearInterval(state.rouletteTimer);
+    state.rouletteTimer = null;
+  }
+
+  const movies = state.rouletteMovies;
+
+  if (!movies.length) {
+    closeRoulette();
+    return;
+  }
+
+  const winner = movies[Math.floor(Math.random() * movies.length)];
+  state.rouletteWinner = winner;
+  setRouletteFrame(winner, { final: true });
+  els.rouletteStatus.textContent = 'a escolhida é…';
+  els.rouletteFooter.classList.remove('hidden');
+  els.rouletteFooter.querySelector('button')?.focus();
+}
+
+function startRoulette() {
+  if (state.rouletteTimer !== null) {
+    window.clearInterval(state.rouletteTimer);
+  }
+
+  const startedAt = Date.now();
+  let lastIndex = -1;
+
+  state.rouletteTimer = window.setInterval(() => {
+    const movies = state.rouletteMovies;
+
+    if (!movies.length) {
+      finishRoulette();
+      return;
+    }
+
+    if (Date.now() - startedAt >= ROULETTE_DURATION_MS) {
+      finishRoulette();
+      return;
+    }
+
+    let index = Math.floor(Math.random() * movies.length);
+
+    if (movies.length > 1 && index === lastIndex) {
+      index = (index + 1) % movies.length;
+    }
+
+    lastIndex = index;
+    setRouletteFrame(movies[index]);
+  }, ROULETTE_TICK_MS);
+}
+
+function openRoulette() {
+  if (state.watchlist.length < 2) {
+    toast('Adicione pelo menos 2 indicações para sortear.', 'error');
+    return;
+  }
+
+  state.rouletteMovies = [...state.watchlist];
+  state.rouletteWinner = null;
+
+  setRouletteFrame(state.rouletteMovies[0], { final: false });
+  els.roulettePoster.classList.remove('roulette-winner');
+  els.rouletteStatus.textContent = 'sorteando…';
+  els.rouletteFooter.classList.add('hidden');
+  els.rouletteModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+
+  startRoulette();
+}
+
+function closeRoulette() {
+  if (state.rouletteTimer !== null) {
+    window.clearInterval(state.rouletteTimer);
+    state.rouletteTimer = null;
+  }
+
+  state.rouletteWinner = null;
+  els.rouletteModal.classList.add('hidden');
+
+  if (els.modal.classList.contains('hidden')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+function renderFavoriteSlot(movie, { editable = true } = {}) {
   if (!movie) {
+    if (!editable) {
+      return `
+        <div class="flex aspect-[2/3] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-panel/25 bg-panel/[0.02] px-3 text-center">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full border border-panel/25 text-zinc-400/40">
+            ${FILM_ICON}
+          </span>
+          <span class="text-[9px] uppercase tracking-[0.16em] text-zinc-400/40">vaga livre</span>
+        </div>`;
+    }
+
     return `
       <button
         type="button"
@@ -495,42 +690,302 @@ function renderFavoriteSlot(movie) {
           </div>
         </div>
       </button>
-      <button
-        type="button"
-        data-remove-favorite="${movie.tmdbId}"
-        aria-label="Remover ${escapeHtml(movie.title)} dos favoritos"
-        class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300 opacity-0 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-      >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <path d="M6 6l12 12M18 6 6 18"></path>
-        </svg>
-      </button>
+      ${
+        editable
+          ? `<button
+               type="button"
+               data-remove-favorite="${movie.tmdbId}"
+               aria-label="Remover ${escapeHtml(movie.title)} dos favoritos"
+               class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300 opacity-0 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+             >
+               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                 <path d="M6 6l12 12M18 6 6 18"></path>
+               </svg>
+             </button>`
+          : ''
+      }
     </div>`;
+}
+
+function profileDisplayUser() {
+  if (!state.me) return null;
+  if (!state.profileUserId || state.profileUserId === state.me.id) return state.me;
+  return state.profileUser;
+}
+
+function viewingSelfProfile() {
+  return !state.me || !state.profileUserId || state.profileUserId === state.me.id;
+}
+
+function songLabel(url) {
+  if (!url) return 'Sem música ainda';
+
+  try {
+    const { pathname } = new URL(url);
+    const file = decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '');
+    const label = file
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim();
+
+    return label || 'Música do perfil';
+  } catch {
+    return 'Música do perfil';
+  }
+}
+
+function musicCoverMarkup(profile) {
+  if (profile?.profileSongCoverUrl) {
+    return `<img src="${escapeHtml(profile.profileSongCoverUrl)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />`;
+  }
+
+  return `<span class="flex h-full w-full items-center justify-center bg-gradient-to-br from-panel/30 to-base text-accent/60">${MUSIC_ICON}</span>`;
+}
+
+function updateMusicUI() {
+  if (!els.profileMusicDisc) return;
+
+  const profile = profileDisplayUser();
+  if (!profile) return;
+
+  const isPlaying = Boolean(
+    state.audio && state.audioProfileId === profile.id && !state.audio.paused,
+  );
+  const hasSong = Boolean(profile.profileSongAudioUrl);
+
+  els.profileMusicDisc.classList.toggle(SPIN_CLASS, isPlaying);
+  els.profileMusicDisc.setAttribute('aria-pressed', String(isPlaying));
+  els.profileMusicDisc.setAttribute(
+    'aria-label',
+    isPlaying ? 'Pausar música do perfil' : 'Tocar música do perfil',
+  );
+
+  if (els.profileMusicLabel) {
+    els.profileMusicLabel.textContent = hasSong
+      ? songLabel(profile.profileSongAudioUrl)
+      : 'Sem música ainda';
+  }
+
+  if (els.profileMusicStatus) {
+    els.profileMusicStatus.textContent = isPlaying
+      ? 'Tocando agora · toque no disco para pausar'
+      : hasSong
+        ? 'Toque no disco para ouvir.'
+        : viewingSelfProfile()
+          ? 'Adicione um link de áudio abaixo para tocar.'
+          : 'Nenhuma música escolhida.';
+  }
+}
+
+function stopSong() {
+  if (state.audio) {
+    state.audio.pause();
+    state.audio = null;
+  }
+
+  state.audioProfileId = null;
+  updateMusicUI();
+}
+
+function toggleProfileSong() {
+  const profile = profileDisplayUser();
+  if (!profile) return;
+
+  if (!profile.profileSongAudioUrl) {
+    toast(
+      viewingSelfProfile()
+        ? 'Adicione o link de um áudio para a sua música.'
+        : 'Esse perfil ainda não escolheu uma música.',
+      'error',
+    );
+    return;
+  }
+
+  const isPlayingThis =
+    state.audio && state.audioProfileId === profile.id && !state.audio.paused;
+
+  if (isPlayingThis) {
+    stopSong();
+    return;
+  }
+
+  stopSong();
+
+  const audio = new Audio(profile.profileSongAudioUrl);
+  audio.loop = true;
+  audio.preload = 'auto';
+  audio.volume = 0.9;
+  state.audio = audio;
+  state.audioProfileId = profile.id;
+
+  audio.addEventListener(
+    'error',
+    () => {
+      if (state.audio !== audio) return;
+      toast('Não foi possível carregar essa música.', 'error');
+      stopSong();
+    },
+    { once: true },
+  );
+
+  audio.play().then(updateMusicUI).catch(() => {
+    if (state.audio !== audio) return;
+    toast('O navegador bloqueou o áudio. Toque no disco novamente.', 'error');
+    stopSong();
+  });
+
+  updateMusicUI();
+}
+
+async function openProfileFor(userId) {
+  if (!state.me || !Number.isSafeInteger(userId)) return;
+
+  const isSelf = userId === state.me.id;
+  const member = state.members.find((item) => item.id === userId) || (isSelf ? state.me : null);
+
+  if (!isSelf && !member) return;
+
+  if (state.audioProfileId !== null && state.audioProfileId !== userId) stopSong();
+  if (!els.modal.classList.contains('hidden')) closeModal();
+
+  state.profileUserId = userId;
+  setActiveTab('profile', { push: true });
+
+  if (isSelf) {
+    state.profileUser = state.me;
+    state.profileFavorites = state.favorites;
+    state.profileLoading = false;
+    renderProfile();
+    return;
+  }
+
+  const cached = state.partnerProfiles[userId];
+
+  if (cached) {
+    state.profileUser = cached.user;
+    state.profileFavorites = Array.isArray(cached.favorites) ? cached.favorites : [];
+    state.profileLoading = false;
+    renderProfile();
+    return;
+  }
+
+  state.profileUser = member;
+  state.profileFavorites = [];
+  state.profileLoading = true;
+  renderProfile();
+
+  try {
+    const data = await api(`/api/profile/${userId}`);
+
+    if (!data?.user) {
+      throw new Error('O servidor devolveu um perfil inválido.');
+    }
+
+    state.partnerProfiles[userId] = {
+      user: data.user,
+      favorites: Array.isArray(data.favorites) ? data.favorites : [],
+    };
+
+    if (state.profileUserId === userId) {
+      state.profileUser = state.partnerProfiles[userId].user;
+      state.profileFavorites = state.partnerProfiles[userId].favorites;
+    }
+  } catch (error) {
+    console.error('[logtwo] Não foi possível carregar o perfil da dupla.', error);
+    toast(error.message, 'error');
+
+    if (state.profileUserId === userId) {
+      state.profileUser = member;
+      state.profileFavorites = [];
+    }
+  } finally {
+    if (state.profileUserId === userId) {
+      state.profileLoading = false;
+      renderProfile();
+    }
+  }
 }
 
 function renderProfile() {
   if (!state.me) return;
 
-  els.profileAvatar.innerHTML = avatarMarkup(state.me, {
+  if (els.profileLoading) {
+    els.profileLoading.classList.toggle('hidden', !state.profileLoading);
+  }
+
+  if (els.profileBody) {
+    els.profileBody.classList.toggle('hidden', state.profileLoading);
+    els.profileBody.classList.toggle('grid', !state.profileLoading);
+  }
+
+  if (state.profileLoading) return;
+
+  const isSelf = viewingSelfProfile();
+  const person = profileDisplayUser() || state.me;
+  const favorites = isSelf ? state.favorites : state.profileFavorites;
+  const displayName = person.name || 'Perfil';
+  const first = firstName(displayName);
+
+  els.profileAvatar.innerHTML = avatarMarkup(person, {
     size: 'h-24 w-24 sm:h-28 sm:w-28',
     textSize: 'text-3xl',
     tone: 'bg-accent/15 text-accent',
     border: 'border border-panel/40',
   });
-  els.profileName.textContent = state.me.name;
-  els.profileEmail.textContent = state.me.email;
+  els.profileName.textContent = displayName;
+  els.profileEmail.textContent = isSelf ? person.email || '' : 'perfil da dupla';
+  els.profileEmail.classList.toggle('hidden', !isSelf);
+  els.profileRole.textContent = isSelf ? 'uma das duas poltronas' : 'a outra poltrona';
+  els.profileEyebrow.textContent = isSelf ? 'seu perfil' : `perfil de ${first}`;
 
-  if (document.activeElement !== els.profileNameInput) {
-    els.profileNameInput.value = state.me.name;
+  if (els.profileViewSelf) {
+    els.profileViewSelf.classList.toggle('hidden', isSelf);
+    els.profileViewSelf.classList.toggle('inline-flex', !isSelf);
+  }
+
+  if (els.profileEdit) {
+    els.profileEdit.classList.toggle('hidden', !isSelf);
+  }
+
+  if (isSelf) {
+    if (document.activeElement !== els.profileNameInput) {
+      els.profileNameInput.value = state.me.name;
+    }
+
+    if (document.activeElement !== els.profileSongAudioInput) {
+      els.profileSongAudioInput.value = state.me.profileSongAudioUrl || '';
+    }
+
+    if (document.activeElement !== els.profileSongCoverInput) {
+      els.profileSongCoverInput.value = state.me.profileSongCoverUrl || '';
+    }
   }
 
   const hasAvatar = Boolean(state.me.avatarUrl);
-  els.profileAvatarRemove.classList.toggle('hidden', !hasAvatar);
-  els.profileAvatarRemove.classList.toggle('inline-flex', hasAvatar);
+  els.profileAvatarRemove.classList.toggle('hidden', !isSelf || !hasAvatar);
+  els.profileAvatarRemove.classList.toggle('inline-flex', isSelf && hasAvatar);
 
-  els.favoritesCount.textContent = `${state.favorites.length}/${MAX_FAVORITES}`;
+  if (els.profileMusicCover) {
+    els.profileMusicCover.innerHTML = musicCoverMarkup(person);
+  }
+  updateMusicUI();
+
+  if (els.profileFavoritesTitle) {
+    els.profileFavoritesTitle.innerHTML = isSelf
+      ? 'Quatro filmes para levar<span class="text-accent">.</span>'
+      : `Favoritos de ${escapeHtml(first)}<span class="text-accent">.</span>`;
+  }
+
+  if (els.profileFavoritesHint) {
+    els.profileFavoritesHint.textContent = isSelf
+      ? 'Escolha até quatro títulos que definem o seu lado da estante. Você pode trocar quando quiser.'
+      : `Os títulos que ${first} escolheu para a estante.`;
+  }
+
+  const safeFavorites = Array.isArray(favorites) ? favorites : [];
+  els.favoritesCount.textContent = `${safeFavorites.length}/${MAX_FAVORITES}`;
   els.favoritesGrid.innerHTML = Array.from({ length: MAX_FAVORITES }, (_, index) =>
-    renderFavoriteSlot(state.favorites[index]),
+    renderFavoriteSlot(safeFavorites[index], { editable: isSelf }),
   ).join('');
 }
 
@@ -547,6 +1002,11 @@ function renderTabs() {
 
 function setActiveTab(tab, { push = false, animate = true } = {}) {
   const next = TAB_HASH[tab] ? tab : 'watched';
+
+  if (next !== 'profile' && state.audio) {
+    stopSong();
+  }
+
   state.activeTab = next;
 
   for (const button of document.querySelectorAll('[data-tab]')) {
@@ -639,6 +1099,15 @@ async function loadDashboard() {
   if (profileData?.user) {
     state.me = { ...state.me, ...profileData.user };
     syncMember(state.me);
+  }
+
+  if (!state.profileUserId && state.me) {
+    state.profileUserId = state.me.id;
+  }
+
+  if (viewingSelfProfile()) {
+    state.profileUser = state.me;
+    state.profileFavorites = state.favorites;
   }
 }
 
@@ -953,6 +1422,24 @@ on(els.profileAvatarInput, 'change', () => {
 
 on(els.profileAvatarRemove, 'click', removeAvatar);
 on(els.profileNameForm, 'submit', saveProfileName);
+on(els.profileSongForm, 'submit', saveProfileSong);
+on(els.profileMusicDisc, 'click', toggleProfileSong);
+on(els.profileViewSelf, 'click', () => {
+  if (state.me) openProfileFor(state.me.id);
+});
+
+on(els.rouletteButton, 'click', openRoulette);
+on(els.rouletteModal, 'click', (event) => {
+  if (event.target.closest('[data-close-roulette]')) closeRoulette();
+});
+
+document.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-profile-user]');
+  if (!trigger) return;
+
+  event.preventDefault();
+  openProfileFor(Number(trigger.dataset.profileUser));
+});
 
 function modalCloseButton() {
   return `
@@ -1112,12 +1599,19 @@ function renderModal() {
     <section class="rounded-2xl border border-accent/25 bg-accent/[0.04] p-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5">
-          ${avatarMarkup(state.me, {
-            size: 'h-8 w-8',
-            textSize: 'text-[9px]',
-            tone: memberTone(ownMemberIndex),
-            border: 'border border-accent/25',
-          })}
+          <button
+            type="button"
+            data-profile-user="${state.me.id}"
+            aria-label="Ver perfil de ${escapeHtml(state.me.name)}"
+            class="shrink-0 rounded-full transition hover:opacity-80"
+          >
+            ${avatarMarkup(state.me, {
+              size: 'h-8 w-8',
+              textSize: 'text-[9px]',
+              tone: memberTone(ownMemberIndex),
+              border: 'border border-accent/25',
+            })}
+          </button>
           <div>
             <p class="micro-label">sua nota</p>
             <p class="mt-0.5 text-xs font-semibold text-zinc-100">${escapeHtml(ownName)}</p>
@@ -1158,12 +1652,28 @@ function renderModal() {
     <section class="rounded-2xl border border-panel/25 bg-panel/[0.06] p-5">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5">
-          ${avatarMarkup(partner || { name: '?' }, {
-            size: 'h-8 w-8',
-            textSize: 'text-[9px]',
-            tone: memberTone(partnerIndex),
-            border: 'border border-panel/25',
-          })}
+          ${
+            partner
+              ? `<button
+                   type="button"
+                   data-profile-user="${partner.id}"
+                   aria-label="Ver perfil de ${escapeHtml(partner.name)}"
+                   class="shrink-0 rounded-full transition hover:opacity-80"
+                 >
+                   ${avatarMarkup(partner, {
+                     size: 'h-8 w-8',
+                     textSize: 'text-[9px]',
+                     tone: memberTone(partnerIndex),
+                     border: 'border border-panel/25',
+                   })}
+                 </button>`
+              : avatarMarkup({ name: '?' }, {
+                  size: 'h-8 w-8',
+                  textSize: 'text-[9px]',
+                  tone: memberTone(partnerIndex),
+                  border: 'border border-panel/25',
+                })
+          }
           <div>
             <p class="micro-label">nota de ${escapeHtml(partnerName)}</p>
             <p class="mt-0.5 text-xs font-semibold text-zinc-100">${escapeHtml(partner?.name || 'Sua dupla')}</p>
@@ -1690,6 +2200,64 @@ async function saveProfileName(event) {
   }
 }
 
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function saveProfileSong(event) {
+  event.preventDefault();
+
+  if (!state.me) return;
+
+  const audioUrl = els.profileSongAudioInput.value.trim();
+  const coverUrl = els.profileSongCoverInput.value.trim();
+
+  if (audioUrl && !isHttpUrl(audioUrl)) {
+    toast('Informe um link http(s) válido para o áudio.', 'error');
+    els.profileSongAudioInput.focus();
+    return;
+  }
+
+  if (coverUrl && !isHttpUrl(coverUrl)) {
+    toast('Informe um link http(s) válido para a capa.', 'error');
+    els.profileSongCoverInput.focus();
+    return;
+  }
+
+  const submit = els.profileSongForm.querySelector('button[type="submit"]');
+  const originalLabel = submit.textContent;
+
+  submit.disabled = true;
+  submit.textContent = 'Salvando…';
+
+  try {
+    const data = await api('/api/profile', {
+      method: 'PUT',
+      body: { profileSongAudioUrl: audioUrl, profileSongCoverUrl: coverUrl },
+    });
+
+    if (!data?.user) {
+      console.error('[logtwo] Perfil sem usuário na resposta.', data);
+      throw new Error('O servidor não confirmou a música do perfil.');
+    }
+
+    if (state.audioProfileId === state.me.id) stopSong();
+
+    applyProfileUser(data.user);
+    toast('Música do perfil atualizada.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    submit.disabled = false;
+    submit.textContent = originalLabel;
+  }
+}
+
 function openMovie(movieId, trigger = document.activeElement) {
   state.modalTrigger = trigger;
   state.activeMovie = null;
@@ -1828,6 +2396,11 @@ els.modal.addEventListener('keydown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+
+  if (!els.rouletteModal.classList.contains('hidden')) {
+    closeRoulette();
+    return;
+  }
 
   if (!els.modal.classList.contains('hidden')) {
     closeModal();
