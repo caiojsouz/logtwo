@@ -31,6 +31,9 @@ const state = {
   profileLoading: false,
   audio: null,
   audioProfileId: null,
+  songResults: [],
+  songSearchAbort: null,
+  songSaving: false,
   rouletteTimer: null,
   rouletteMovies: [],
   rouletteWinner: null,
@@ -133,9 +136,10 @@ const els = {
   profileMusicCover: document.querySelector('#profile-music-cover'),
   profileMusicLabel: document.querySelector('#profile-music-label'),
   profileMusicStatus: document.querySelector('#profile-music-status'),
-  profileSongForm: document.querySelector('#profile-song-form'),
-  profileSongAudioInput: document.querySelector('#profile-song-audio-input'),
-  profileSongCoverInput: document.querySelector('#profile-song-cover-input'),
+  songSearchForm: document.querySelector('#profile-song-search-form'),
+  songSearchInput: document.querySelector('#song-search'),
+  songSearchSubmit: document.querySelector('#song-search-submit'),
+  songSearchResults: document.querySelector('#search-results'),
   profileFavoritesTitle: document.querySelector('#profile-favorites-title'),
   profileFavoritesHint: document.querySelector('#profile-favorites-hint'),
   rouletteButton: document.querySelector('#watchlist-roulette-btn'),
@@ -794,7 +798,7 @@ function toggleProfileSong() {
   if (!profile.profileSongAudioUrl) {
     toast(
       viewingSelfProfile()
-        ? 'Adicione o link de um áudio para a sua música.'
+        ? 'Escolha uma música para o seu perfil.'
         : 'Esse perfil ainda não escolheu uma música.',
       'error',
     );
@@ -848,6 +852,7 @@ async function openProfileFor(userId) {
   if (state.audioProfileId !== null && state.audioProfileId !== userId) stopSong();
   if (!els.modal.classList.contains('hidden')) closeModal();
 
+  hideSongResults();
   state.profileUserId = userId;
   setActiveTab('profile', { push: true });
 
@@ -951,14 +956,6 @@ function renderProfile() {
     if (document.activeElement !== els.profileNameInput) {
       els.profileNameInput.value = state.me.name;
     }
-
-    if (document.activeElement !== els.profileSongAudioInput) {
-      els.profileSongAudioInput.value = state.me.profileSongAudioUrl || '';
-    }
-
-    if (document.activeElement !== els.profileSongCoverInput) {
-      els.profileSongCoverInput.value = state.me.profileSongCoverUrl || '';
-    }
   }
 
   const hasAvatar = Boolean(state.me.avatarUrl);
@@ -1003,8 +1000,9 @@ function renderTabs() {
 function setActiveTab(tab, { push = false, animate = true } = {}) {
   const next = TAB_HASH[tab] ? tab : 'watched';
 
-  if (next !== 'profile' && state.audio) {
-    stopSong();
+  if (next !== 'profile') {
+    if (state.audio) stopSong();
+    hideSongResults();
   }
 
   state.activeTab = next;
@@ -1422,7 +1420,11 @@ on(els.profileAvatarInput, 'change', () => {
 
 on(els.profileAvatarRemove, 'click', removeAvatar);
 on(els.profileNameForm, 'submit', saveProfileName);
-on(els.profileSongForm, 'submit', saveProfileSong);
+on(els.songSearchForm, 'submit', submitSongSearch);
+on(els.songSearchResults, 'click', (event) => {
+  const button = event.target.closest('[data-song-result]');
+  if (button) selectSongResult(Number(button.dataset.songResult));
+});
 on(els.profileMusicDisc, 'click', toggleProfileSong);
 on(els.profileViewSelf, 'click', () => {
   if (state.me) openProfileFor(state.me.id);
@@ -2200,40 +2202,142 @@ async function saveProfileName(event) {
   }
 }
 
-function isHttpUrl(value) {
+const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
+const ITUNES_LIMIT = 5;
+
+function hideSongResults() {
+  state.songSearchAbort?.abort();
+  state.songSearchAbort = null;
+  state.songResults = [];
+
+  if (!els.songSearchResults) return;
+
+  els.songSearchResults.classList.add('hidden');
+  els.songSearchResults.innerHTML = '';
+  els.songSearchSubmit.disabled = false;
+}
+
+function showSongSearchMessage(message) {
+  els.songSearchResults.innerHTML = `
+    <p class="px-5 py-8 text-center text-[11px] leading-relaxed text-zinc-400">${escapeHtml(message)}</p>`;
+  els.songSearchResults.classList.remove('hidden');
+}
+
+function renderSongResults(results) {
+  if (results.length === 0) {
+    showSongSearchMessage('Nenhuma música encontrada. Tente outro termo.');
+    return;
+  }
+
+  els.songSearchResults.innerHTML = results
+    .map((track, index) => {
+      const title = track.trackName || 'Faixa sem nome';
+      const artist = track.artistName || '';
+      const thumb = String(track.artworkUrl100 || '').trim();
+      const unavailable = !track.previewUrl;
+
+      return `
+        <button
+          type="button"
+          data-song-result="${index}"
+          ${unavailable ? 'disabled' : ''}
+          class="flex w-full items-center gap-3 border-b border-panel/20 p-3 text-left transition last:border-b-0 hover:bg-panel/15 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span class="h-11 w-11 shrink-0 overflow-hidden rounded-md bg-panel/20">
+            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />` : ''}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[13px] font-medium text-zinc-100">${escapeHtml(title)}</span>
+            <span class="mt-0.5 block truncate text-[10px] text-zinc-400">${escapeHtml(artist)}</span>
+          </span>
+          <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M8 5v14l11-7z"></path>
+          </svg>
+        </button>`;
+    })
+    .join('');
+
+  els.songSearchResults.classList.remove('hidden');
+}
+
+async function searchSongs(term) {
+  state.songSearchAbort?.abort();
+  const controller = new AbortController();
+  state.songSearchAbort = controller;
+
+  els.songSearchSubmit.disabled = true;
+  els.songSearchResults.innerHTML = `
+    <div class="flex items-center justify-center gap-3 px-5 py-8">
+      <span class="spinner spinner-light"></span>
+      <span class="text-[11px] text-zinc-400">Buscando no iTunes…</span>
+    </div>`;
+  els.songSearchResults.classList.remove('hidden');
+
   try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
+    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&entity=song&limit=${ITUNES_LIMIT}`;
+    const response = await fetch(url, { signal: controller.signal });
+
+    if (!response.ok) {
+      throw new Error('O iTunes não respondeu agora. Tente novamente.');
+    }
+
+    const data = await response.json();
+
+    if (state.songSearchAbort !== controller) return;
+
+    state.songResults = Array.isArray(data?.results) ? data.results : [];
+    renderSongResults(state.songResults);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+
+    console.error('[logtwo] Falha na busca do iTunes', error);
+    showSongSearchMessage(
+      error instanceof TypeError
+        ? 'Não foi possível falar com o iTunes. Tente novamente.'
+        : error.message || 'Não foi possível buscar agora.',
+    );
+  } finally {
+    if (state.songSearchAbort === controller) {
+      state.songSearchAbort = null;
+      els.songSearchSubmit.disabled = false;
+    }
   }
 }
 
-async function saveProfileSong(event) {
+function submitSongSearch(event) {
   event.preventDefault();
 
-  if (!state.me) return;
+  const term = els.songSearchInput.value.trim();
 
-  const audioUrl = els.profileSongAudioInput.value.trim();
-  const coverUrl = els.profileSongCoverInput.value.trim();
-
-  if (audioUrl && !isHttpUrl(audioUrl)) {
-    toast('Informe um link http(s) válido para o áudio.', 'error');
-    els.profileSongAudioInput.focus();
+  if (term.length < 2) {
+    toast('Digite pelo menos 2 caracteres para buscar.', 'error');
+    els.songSearchInput.focus();
     return;
   }
 
-  if (coverUrl && !isHttpUrl(coverUrl)) {
-    toast('Informe um link http(s) válido para a capa.', 'error');
-    els.profileSongCoverInput.focus();
+  searchSongs(term);
+}
+
+async function selectSongResult(index) {
+  const track = state.songResults[index];
+
+  if (!track || state.songSaving) return;
+
+  const audioUrl = String(track.previewUrl || '').trim();
+
+  if (!audioUrl) {
+    toast('Essa faixa não tem prévia de áudio.', 'error');
     return;
   }
 
-  const submit = els.profileSongForm.querySelector('button[type="submit"]');
-  const originalLabel = submit.textContent;
+  const coverUrl = String(track.artworkUrl100 || '')
+    .replace('100x100bb', '600x600bb')
+    .trim();
 
-  submit.disabled = true;
-  submit.textContent = 'Salvando…';
+  state.songSaving = true;
+  for (const button of els.songSearchResults.querySelectorAll('[data-song-result]')) {
+    button.disabled = true;
+  }
 
   try {
     const data = await api('/api/profile', {
@@ -2249,12 +2353,17 @@ async function saveProfileSong(event) {
     if (state.audioProfileId === state.me.id) stopSong();
 
     applyProfileUser(data.user);
+    els.songSearchInput.value = '';
+    hideSongResults();
     toast('Música do perfil atualizada.');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
-    submit.disabled = false;
-    submit.textContent = originalLabel;
+    state.songSaving = false;
+
+    for (const button of els.songSearchResults.querySelectorAll('[data-song-result]')) {
+      button.disabled = false;
+    }
   }
 }
 

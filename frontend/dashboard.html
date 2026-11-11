@@ -15,7 +15,7 @@
     />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/assets/js/tailwind-config.js"></script>
-    <link rel="stylesheet" href="/assets/css/styles.css?v=20261111" />
+    <link rel="stylesheet" href="/assets/css/styles.css?v=20261111b" />
   </head>
   <body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased lg:h-screen lg:overflow-hidden">
     <div class="cinema-bg grain relative min-h-screen lg:h-screen">
@@ -490,39 +490,35 @@
 
                   <div class="my-6 h-px bg-panel/25"></div>
 
-                  <form id="profile-song-form" class="space-y-3" novalidate>
+                  <div id="profile-song-picker" class="space-y-3">
                     <div>
-                      <label for="profile-song-audio-input" class="micro-label block">música do perfil</label>
+                      <label for="song-search" class="micro-label block">música do perfil</label>
                       <p class="mt-1.5 text-[10px] leading-relaxed text-zinc-400/60">
-                        Cole os links diretos do áudio (.mp3) e da capa. O disco gira enquanto a
-                        música toca.
+                        Busque uma faixa no iTunes e escolha a que vai girar no seu vinil.
                       </p>
                     </div>
-                    <div class="space-y-2">
+                    <form id="profile-song-search-form" class="flex items-center gap-2" novalidate>
                       <input
-                        id="profile-song-audio-input"
-                        type="url"
-                        inputmode="url"
-                        maxlength="2048"
-                        placeholder="https://.../musica.mp3"
-                        class="w-full rounded-xl border border-panel/30 bg-base/50 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/60 focus:outline-none"
+                        id="song-search"
+                        type="text"
+                        placeholder="Busque uma música..."
+                        autocomplete="off"
+                        maxlength="120"
+                        class="min-w-0 flex-1 rounded-xl border border-panel/30 bg-base/50 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/60 focus:outline-none"
                       />
-                      <input
-                        id="profile-song-cover-input"
-                        type="url"
-                        inputmode="url"
-                        maxlength="2048"
-                        placeholder="https://.../capa.jpg"
-                        class="w-full rounded-xl border border-panel/30 bg-base/50 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/60 focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      class="w-full rounded-full border border-accent/40 bg-accent/[0.08] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Salvar música
-                    </button>
-                  </form>
+                      <button
+                        type="submit"
+                        id="song-search-submit"
+                        class="shrink-0 rounded-full border border-accent/40 bg-accent/[0.08] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent transition hover:border-accent hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Buscar
+                      </button>
+                    </form>
+                    <div
+                      id="search-results"
+                      class="hidden overflow-hidden rounded-xl border border-panel/25 bg-base/40"
+                    ></div>
+                  </div>
                 </div>
               </section>
 
@@ -640,6 +636,6 @@
     </div>
 
     <script src="/assets/js/config.js"></script>
-    <script type="module" src="/assets/js/dashboard.js?v=20261111"></script>
+    <script type="module" src="/assets/js/dashboard.js?v=20261111b"></script>
   </body>
 </html>
