@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_data TEXT,
   profile_song_audio_url TEXT,
   profile_song_cover_url TEXT,
+  profile_song_title TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 

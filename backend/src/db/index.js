@@ -37,6 +37,7 @@ export async function initDatabase() {
   await ensureColumn('users', 'avatar_data', 'avatar_data TEXT');
   await ensureColumn('users', 'profile_song_audio_url', 'profile_song_audio_url TEXT');
   await ensureColumn('users', 'profile_song_cover_url', 'profile_song_cover_url TEXT');
+  await ensureColumn('users', 'profile_song_title', 'profile_song_title TEXT');
 }
 
 export async function all(sql, args = []) {

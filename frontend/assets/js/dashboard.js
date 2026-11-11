@@ -721,21 +721,9 @@ function viewingSelfProfile() {
   return !state.me || !state.profileUserId || state.profileUserId === state.me.id;
 }
 
-function songLabel(url) {
-  if (!url) return 'Sem música ainda';
-
-  try {
-    const { pathname } = new URL(url);
-    const file = decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '');
-    const label = file
-      .replace(/\.[a-z0-9]+$/i, '')
-      .replace(/[-_]+/g, ' ')
-      .trim();
-
-    return label || 'Música do perfil';
-  } catch {
-    return 'Música do perfil';
-  }
+function songLabel(profile) {
+  if (!profile?.profileSongAudioUrl) return 'Sem música ainda';
+  return profile.profileSongTitle || 'Música do perfil';
 }
 
 function musicCoverMarkup(profile) {
@@ -765,9 +753,7 @@ function updateMusicUI() {
   );
 
   if (els.profileMusicLabel) {
-    els.profileMusicLabel.textContent = hasSong
-      ? songLabel(profile.profileSongAudioUrl)
-      : 'Sem música ainda';
+    els.profileMusicLabel.textContent = songLabel(profile);
   }
 
   if (els.profileMusicStatus) {
@@ -2334,6 +2320,11 @@ async function selectSongResult(index) {
     .replace('100x100bb', '600x600bb')
     .trim();
 
+  const trackTitle = [track.trackName, track.artistName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+
   state.songSaving = true;
   for (const button of els.songSearchResults.querySelectorAll('[data-song-result]')) {
     button.disabled = true;
@@ -2342,7 +2333,11 @@ async function selectSongResult(index) {
   try {
     const data = await api('/api/profile', {
       method: 'PUT',
-      body: { profileSongAudioUrl: audioUrl, profileSongCoverUrl: coverUrl },
+      body: {
+        profileSongAudioUrl: audioUrl,
+        profileSongCoverUrl: coverUrl,
+        profileSongTitle: trackTitle || null,
+      },
     });
 
     if (!data?.user) {
