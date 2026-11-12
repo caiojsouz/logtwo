@@ -6,27 +6,24 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('push', (event) => {
-  let payload = {};
+self.addEventListener('push', function (event) {
+  if (!event.data) return;
 
   try {
-    payload = event.data ? event.data.json() : {};
-  } catch {
-    payload = { body: event.data ? event.data.text() : '' };
+    const data = event.data.json();
+
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'logtwo', {
+        body: data.body || 'Nova atualização no diário!',
+        icon: data.icon || '/assets/img/icon-192.png',
+        badge: data.badge || '/assets/img/icon-192.png',
+        data: { url: data.url || '/dashboard.html#timeline', movieId: data.movieId ?? null },
+        vibrate: [80, 40, 80],
+      }),
+    );
+  } catch (e) {
+    console.error('Erro no push:', e);
   }
-
-  const title = payload.title || 'logtwo.';
-  const url = payload.url || '/dashboard.html#timeline';
-
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: payload.body || 'Tem novidade no diário de vocês.',
-      icon: payload.icon || '/assets/img/icon-192.png',
-      badge: payload.badge || '/assets/img/icon-192.png',
-      data: { url, movieId: payload.movieId ?? null },
-      vibrate: [80, 40, 80],
-    }),
-  );
 });
 
 self.addEventListener('notificationclick', (event) => {

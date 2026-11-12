@@ -31,7 +31,7 @@ export async function recordActivity({
     );
 
     const partnerId = partnerIdOf(diary, userId);
-    if (!partnerId) return;
+    if (!partnerId || partnerId === userId) return;
 
     const actor = await one('SELECT name FROM users WHERE id = ?', [userId]);
     const actorName = actor?.name ? actor.name.split(/\s+/)[0] : 'Sua dupla';

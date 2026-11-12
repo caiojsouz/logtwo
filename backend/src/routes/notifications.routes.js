@@ -1,7 +1,7 @@
 import express from 'express';
 import { run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
-import { publicKey, pushEnabled } from '../lib/push.js';
+import { publicKey, pushEnabled, sendPushToUsers } from '../lib/push.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -55,6 +55,36 @@ router.post(
     );
 
     res.status(201).json({ ok: true });
+  }),
+);
+
+router.post(
+  '/test',
+  asyncHandler(async (req, res) => {
+    if (!pushEnabled()) {
+      throw new AppError(503, 'As notificações ainda não estão configuradas no servidor.');
+    }
+
+    const result = await sendPushToUsers([req.user.id], {
+      title: 'logtwo.',
+      body: 'Teste de Push funcionou!',
+      icon: '/assets/img/icon-192.png',
+      badge: '/assets/img/icon-192.png',
+      url: '/dashboard.html#perfil',
+    });
+
+    console.log(
+      `[logtwo] Push de teste (usuário ${req.user.id}): ${result.found} subscription(s) encontrada(s), ${result.sent} envio(s).`,
+    );
+
+    if (result.found === 0) {
+      throw new AppError(
+        404,
+        'Nenhum dispositivo inscrito para esta conta. Ative as notificações neste dispositivo primeiro.',
+      );
+    }
+
+    res.json({ ok: true, subscriptions: result.found, delivered: result.sent });
   }),
 );
 

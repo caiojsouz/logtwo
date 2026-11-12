@@ -20,9 +20,12 @@ router.get(
               a.created_at,
               u.id AS user_id,
               u.name AS user_name,
-              u.avatar_data
+              u.avatar_data,
+              m.song_title,
+              m.song_audio_url
          FROM activity_logs a
          JOIN users u ON u.id = a.user_id
+    LEFT JOIN movies m ON m.tmdb_id = a.movie_id
         WHERE a.diary_id = ?
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT ?`,
@@ -35,6 +38,8 @@ router.get(
         actionType: row.action_type,
         mediaTitle: row.media_title,
         movieId: row.movie_id,
+        songTitle: row.song_title || null,
+        songAudioUrl: row.song_audio_url || null,
         createdAt: row.created_at,
         user: {
           id: row.user_id,

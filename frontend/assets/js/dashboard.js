@@ -54,13 +54,21 @@ const state = {
   notifications: 'unknown',
   pushPublicKey: '',
   pushBusy: false,
+  pushTesting: false,
   interestBusy: null,
+  trackAudio: null,
+  trackPlayingId: null,
+  soundtrackResults: [],
+  soundtrackAbort: null,
+  soundtrackSaving: false,
 };
 
 const MAX_FAVORITES = 4;
 const SPIN_CLASS = 'animate-[spin_4s_linear_infinite]';
 const ROULETTE_TICK_MS = 100;
 const ROULETTE_DURATION_MS = 3000;
+const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
+const ITUNES_LIMIT = 5;
 const TAB_HASH = {
   watched: '#assistidos',
   watchlist: '#indicacoes',
@@ -140,6 +148,7 @@ const els = {
   timelineEmpty: document.querySelector('#timeline-empty'),
   notificationsCard: document.querySelector('#notifications-card'),
   notificationsButton: document.querySelector('#notifications-button'),
+  notificationsTest: document.querySelector('#notifications-test'),
   notificationsStatus: document.querySelector('#notifications-status'),
   profileAvatar: document.querySelector('#profile-avatar'),
   profileName: document.querySelector('#profile-name'),
@@ -172,6 +181,7 @@ const els = {
   roulettePoster: document.querySelector('#roulette-poster'),
   rouletteMovieTitle: document.querySelector('#roulette-movie-title'),
   rouletteMovieMeta: document.querySelector('#roulette-movie-meta'),
+  rouletteProviders: document.querySelector('#roulette-providers'),
   rouletteStatus: document.querySelector('#roulette-status'),
   rouletteFooter: document.querySelector('#roulette-footer'),
   searchWrap: document.querySelector('#search-wrap'),
@@ -229,6 +239,141 @@ function cardDeleteButton(attribute, movie, suffix) {
     >
       ${TRASH_ICON}
     </button>`;
+}
+
+function playIcons(size = 'h-3 w-3') {
+  return `
+    <svg class="song-icon-play ${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M8 5v14l11-7z"></path>
+    </svg>
+    <svg class="song-icon-pause hidden ${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 5h4v14H7zM13 5h4v14h-4z"></path>
+    </svg>`;
+}
+
+function providersMarkup(providers, { compact = false, hideEmpty = false } = {}) {
+  const list = Array.isArray(providers) ? providers.filter((item) => item?.logoUrl) : [];
+
+  if (list.length === 0) {
+    if (hideEmpty) return '';
+    return `<p class="mt-1.5 truncate text-[7px] leading-relaxed text-zinc-500 sm:text-[8px]" title="Indisponível em streaming BR">Indisponível em streaming BR</p>`;
+  }
+
+  const limit = compact ? 3 : 6;
+
+  return `
+    <div class="mt-1.5 flex flex-wrap items-center gap-1">
+      ${list
+        .slice(0, limit)
+        .map(
+          (provider) => `<img
+            src="${escapeHtml(provider.logoUrl)}"
+            alt="${escapeHtml(provider.name)}"
+            title="${escapeHtml(provider.name)}"
+            loading="lazy"
+            decoding="async"
+            class="h-6 w-6 rounded-md object-contain"
+          />`,
+        )
+        .join('')}
+    </div>`;
+}
+
+function songPlayButton(movie, className = '') {
+  if (!movie?.songAudioUrl) return '';
+
+  return `
+    <button
+      type="button"
+      data-song-play="${movie.tmdbId}"
+      aria-pressed="false"
+      aria-label="Tocar trilha sonora"
+      title="Tocar trilha sonora"
+      class="song-play-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-light/20 bg-base/80 text-zinc-100 backdrop-blur transition hover:border-accent/50 hover:text-accent ${className}"
+    >
+      ${playIcons('h-3 w-3')}
+    </button>`;
+}
+
+function findPlayableSong(movieId) {
+  const movie =
+    state.movies.find((item) => item.tmdbId === movieId) ||
+    state.watchlist.find((item) => item.tmdbId === movieId) ||
+    state.upcoming.find((item) => item.tmdbId === movieId) ||
+    (state.activeMovie?.tmdbId === movieId ? state.activeMovie : null);
+  const event = state.timeline.find((item) => Number(item.movieId) === movieId);
+
+  return {
+    audioUrl: movie?.songAudioUrl || event?.songAudioUrl || null,
+    title: movie?.songTitle || event?.songTitle || 'Trilha sonora',
+  };
+}
+
+function updateTrackButtons() {
+  const playingId = state.trackPlayingId;
+  const paused = !state.trackAudio || state.trackAudio.paused;
+  const isPlaying = Boolean(playingId) && !paused;
+
+  for (const button of document.querySelectorAll('[data-song-play]')) {
+    const current = Number(button.dataset.songPlay) === playingId && isPlaying;
+    button.setAttribute('aria-pressed', String(current));
+    button.setAttribute('aria-label', current ? 'Pausar trilha sonora' : 'Tocar trilha sonora');
+    button.title = current ? 'Pausar trilha sonora' : 'Tocar trilha sonora';
+    button.classList.toggle('is-playing', current);
+    button.querySelector('.song-icon-play')?.classList.toggle('hidden', current);
+    button.querySelector('.song-icon-pause')?.classList.toggle('hidden', !current);
+  }
+}
+
+function stopTrack() {
+  if (state.trackAudio) {
+    state.trackAudio.pause();
+    state.trackAudio.currentTime = 0;
+  }
+
+  state.trackAudio = null;
+  state.trackPlayingId = null;
+  updateTrackButtons();
+}
+
+function toggleTrack(movieId) {
+  const song = findPlayableSong(movieId);
+
+  if (!song.audioUrl) return;
+
+  if (state.trackAudio && state.trackPlayingId === movieId) {
+    if (state.trackAudio.paused) {
+      state.trackAudio.play().catch(() => toast('Não foi possível tocar a prévia.', 'error'));
+    } else {
+      state.trackAudio.pause();
+    }
+
+    updateTrackButtons();
+    return;
+  }
+
+  stopTrack();
+
+  const audio = new Audio(song.audioUrl);
+  audio.volume = 0.7;
+
+  audio.addEventListener('ended', () => {
+    state.trackAudio = null;
+    state.trackPlayingId = null;
+    updateTrackButtons();
+  });
+  audio.addEventListener('pause', updateTrackButtons);
+  audio.addEventListener('play', updateTrackButtons);
+
+  state.trackAudio = audio;
+  state.trackPlayingId = movieId;
+
+  audio.play().catch(() => {
+    toast('Não foi possível tocar a prévia da trilha.', 'error');
+    stopTrack();
+  });
+
+  updateTrackButtons();
 }
 
 const formatAverage = (value) =>
@@ -468,6 +613,7 @@ function renderMovieCard(movie, index) {
             ${escapeHtml(movie.title)}
           </h3>
           <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
+          ${providersMarkup(movie.providers, { compact: true, hideEmpty: true })}
           <div class="mt-2 grid grid-cols-1 gap-1 sm:mt-2.5 sm:grid-cols-2 sm:gap-1.5">
             ${state.members
               .map((member, memberIndex) =>
@@ -477,6 +623,7 @@ function renderMovieCard(movie, index) {
           </div>
         </div>
       </button>
+      ${songPlayButton(movie, 'absolute left-2 top-2 z-10')}
       ${cardDeleteButton('data-delete-watched', movie, 'dos assistidos')}
     </article>`;
 }
@@ -495,6 +642,7 @@ function renderShelf() {
   }
 
   els.moviesGrid.innerHTML = state.movies.map(renderMovieCard).join('');
+  updateTrackButtons();
 }
 
 function renderWatchlistCard(movie, index) {
@@ -530,6 +678,7 @@ function renderWatchlistCard(movie, index) {
             ${escapeHtml(movie.title)}
           </h3>
           <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
+          ${providersMarkup(movie.providers, { compact: true })}
         </div>
       </button>
 
@@ -566,6 +715,7 @@ function renderWatchlist() {
   }
 
   els.watchlistGrid.innerHTML = state.watchlist.map(renderWatchlistCard).join('');
+  updateTrackButtons();
 }
 
 function upcomingCountdown(movie) {
@@ -683,6 +833,20 @@ function renderTimelineItem(event, index) {
               : `<span class="font-medium text-zinc-100">${escapeHtml(event.mediaTitle)}</span>`
           }
           ${copy.suffix ? `<span class="text-zinc-400"> ${copy.suffix}</span>` : ''}
+          ${
+            hasMovie && event.songAudioUrl
+              ? `<button
+                   type="button"
+                   data-song-play="${movieId}"
+                   aria-pressed="false"
+                   aria-label="Tocar trilha de ${escapeHtml(event.mediaTitle)}"
+                   title="Tocar trilha sonora${event.songTitle ? `: ${escapeHtml(event.songTitle)}` : ''}"
+                   class="song-play-btn ml-1.5 inline-flex h-5 w-5 translate-y-0.5 items-center justify-center rounded-full border border-panel/40 bg-base/60 align-middle text-zinc-300 transition hover:border-accent/50 hover:text-accent"
+                 >
+                   ${playIcons('h-2.5 w-2.5')}
+                 </button>`
+              : ''
+          }
         </p>
         <p class="mt-1 text-[9px] uppercase tracking-[0.14em] text-zinc-400/60">
           ${escapeHtml(formatRelativeTime(event.createdAt))}
@@ -702,6 +866,7 @@ function renderTimeline() {
   els.timelineList.classList.toggle('hidden', events.length === 0);
   els.timelineEmpty.classList.toggle('hidden', events.length > 0);
   els.timelineList.innerHTML = events.map(renderTimelineItem).join('');
+  updateTrackButtons();
 }
 
 async function refreshTimeline() {
@@ -740,6 +905,10 @@ function setRouletteFrame(movie, { final = false } = {}) {
 
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
   els.rouletteMovieMeta.textContent = [movie.year, runtime].filter(Boolean).join(' · ');
+
+  if (els.rouletteProviders) {
+    els.rouletteProviders.innerHTML = `<div class="flex justify-center">${providersMarkup(movie.providers)}</div>`;
+  }
 }
 
 function finishRoulette() {
@@ -924,6 +1093,13 @@ function renderNotifications() {
         ? 'Bloqueado'
         : 'Ativar Notificações';
   els.notificationsButton.disabled = state.pushBusy || active || blocked;
+
+  if (els.notificationsTest) {
+    els.notificationsTest.disabled = state.pushBusy || state.pushTesting || !active;
+    els.notificationsTest.textContent = state.pushTesting
+      ? 'Enviando teste…'
+      : 'Testar Notificação Push';
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -1012,6 +1188,28 @@ async function enableNotifications() {
     toast('Não foi possível ativar as notificações.', 'error');
   } finally {
     state.pushBusy = false;
+    renderNotifications();
+  }
+}
+
+async function testNotification() {
+  if (state.pushTesting || state.pushBusy) return;
+
+  state.pushTesting = true;
+  renderNotifications();
+
+  try {
+    const data = await api('/api/notifications/test', { method: 'POST' });
+
+    if (Number(data?.delivered) > 0) {
+      toast('Teste enviado! A notificação deve aparecer neste dispositivo.');
+    } else {
+      toast('A inscrição foi encontrada, mas o envio falhou. Verifique as chaves VAPID.', 'error');
+    }
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.pushTesting = false;
     renderNotifications();
   }
 }
@@ -1734,6 +1932,7 @@ on(els.timelineList, 'click', (event) => {
 });
 
 on(els.notificationsButton, 'click', enableNotifications);
+on(els.notificationsTest, 'click', testNotification);
 
 on(els.favoritesGrid, 'click', (event) => {
   const remove = event.target.closest('[data-remove-favorite]');
@@ -1785,6 +1984,20 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   openProfileFor(Number(trigger.dataset.profileUser));
 });
+
+// Captura o clique antes dos cards: o play não deve abrir a ficha do filme.
+document.addEventListener(
+  'click',
+  (event) => {
+    const playButton = event.target.closest('[data-song-play]');
+    if (!playButton) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    toggleTrack(Number(playButton.dataset.songPlay));
+  },
+  true,
+);
 
 function modalCloseButton() {
   return `
@@ -1941,6 +2154,242 @@ function updateModalActions() {
   container.innerHTML = modalActionsMarkup();
 }
 
+function soundtrackCurrentMarkup(movie) {
+  if (!movie.songAudioUrl) {
+    return `<p class="mt-2 text-[10px] leading-relaxed text-zinc-400/70">
+      Nenhuma faixa escolhida ainda. Busque no iTunes e guarde uma prévia de 30 segundos.
+    </p>`;
+  }
+
+  return `
+    <div class="mt-2 flex items-center gap-2.5 rounded-xl border border-panel/25 bg-base/40 p-2.5">
+      ${songPlayButton(movie)}
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-[11px] font-medium text-zinc-100">${escapeHtml(movie.songTitle || 'Trilha sonora')}</p>
+        <p class="mt-0.5 text-[8px] uppercase tracking-[0.14em] text-zinc-400/60">prévia de 30s · iTunes</p>
+      </div>
+      <button
+        type="button"
+        data-soundtrack-remove
+        class="shrink-0 rounded-full border border-panel/35 px-2 py-1 text-[8px] uppercase tracking-[0.1em] text-zinc-400 transition hover:border-danger/40 hover:text-danger"
+      >
+        remover
+      </button>
+    </div>`;
+}
+
+function soundtrackSectionMarkup(movie) {
+  const suggested = `${movie.title} soundtrack`;
+
+  return `
+    <div class="mt-5 border-t border-panel/20 pt-4" data-soundtrack>
+      <p class="micro-label">trilha sonora</p>
+      <div data-soundtrack-current>${soundtrackCurrentMarkup(movie)}</div>
+      <form data-soundtrack-form class="mt-3 flex flex-col gap-2 sm:flex-row" novalidate>
+        <input
+          type="text"
+          data-soundtrack-input
+          value="${escapeHtml(movie.songAudioUrl ? '' : suggested)}"
+          placeholder="${escapeHtml(suggested)}"
+          maxlength="120"
+          autocomplete="off"
+          class="min-w-0 flex-1 rounded-xl border border-panel/30 bg-base/50 px-3 py-2 text-[12px] text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/60 focus:outline-none"
+        />
+        <button
+          type="submit"
+          class="shrink-0 rounded-full border border-accent/40 bg-accent/[0.08] px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-accent transition hover:border-accent hover:bg-accent/15"
+        >
+          Buscar
+        </button>
+      </form>
+      <div data-soundtrack-results class="mt-2 hidden overflow-hidden rounded-xl border border-panel/25 bg-base/40"></div>
+    </div>`;
+}
+
+function renderSoundtrackResults(results) {
+  const container = els.modal.querySelector('[data-soundtrack-results]');
+  if (!container) return;
+
+  container.classList.remove('hidden');
+
+  if (!results.length) {
+    container.innerHTML = `<p class="px-4 py-6 text-center text-[11px] leading-relaxed text-zinc-400">Nenhuma faixa encontrada. Tente outro termo.</p>`;
+    return;
+  }
+
+  container.innerHTML = results
+    .map((track, index) => {
+      const title = track.trackName || 'Faixa sem nome';
+      const artist = track.artistName || '';
+      const thumb = String(track.artworkUrl100 || '').trim();
+      const unavailable = !track.previewUrl;
+
+      return `
+        <button
+          type="button"
+          data-soundtrack-result="${index}"
+          ${unavailable ? 'disabled' : ''}
+          class="flex w-full items-center gap-2.5 border-b border-panel/20 p-2.5 text-left transition last:border-b-0 hover:bg-panel/15 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span class="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-panel/20">
+            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />` : ''}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[12px] font-medium text-zinc-100">${escapeHtml(title)}</span>
+            <span class="mt-0.5 block truncate text-[9px] text-zinc-400">${escapeHtml(artist)}</span>
+          </span>
+          <span class="shrink-0 text-accent">${playIcons('h-3 w-3')}</span>
+        </button>`;
+    })
+    .join('');
+}
+
+async function searchMovieSoundtrack(term) {
+  state.soundtrackAbort?.abort();
+  const controller = new AbortController();
+  state.soundtrackAbort = controller;
+
+  const container = els.modal.querySelector('[data-soundtrack-results]');
+  if (!container) return;
+
+  container.classList.remove('hidden');
+  container.innerHTML = `
+    <div class="flex items-center justify-center gap-2 px-4 py-5">
+      <span class="spinner spinner-light"></span>
+      <span class="text-[10px] text-zinc-400">Buscando no iTunes…</span>
+    </div>`;
+
+  try {
+    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&entity=song&limit=${ITUNES_LIMIT}`;
+    const response = await fetch(url, { signal: controller.signal });
+
+    if (!response.ok) {
+      throw new Error('O iTunes não respondeu agora. Tente novamente.');
+    }
+
+    const data = await response.json();
+
+    if (state.soundtrackAbort !== controller) return;
+
+    state.soundtrackResults = Array.isArray(data?.results) ? data.results : [];
+    renderSoundtrackResults(state.soundtrackResults);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+
+    console.error('[logtwo] Falha na busca da trilha', error);
+
+    if (els.modal.querySelector('[data-soundtrack-results]') === container) {
+      container.innerHTML = `<p class="px-4 py-6 text-center text-[11px] leading-relaxed text-danger">${escapeHtml(
+        error instanceof TypeError ? 'Não foi possível falar com o iTunes.' : error.message,
+      )}</p>`;
+    }
+  } finally {
+    if (state.soundtrackAbort === controller) state.soundtrackAbort = null;
+  }
+}
+
+function submitSoundtrackSearch(event) {
+  event.preventDefault();
+
+  const input = els.modal.querySelector('[data-soundtrack-input]');
+  const term = String(input?.value || '').trim();
+
+  if (term.length < 2) {
+    toast('Digite pelo menos 2 caracteres para buscar no iTunes.', 'error');
+    input?.focus();
+    return;
+  }
+
+  searchMovieSoundtrack(term);
+}
+
+function refreshSoundtrackSection() {
+  const movie = state.activeMovie;
+  if (!movie) return;
+
+  const current = els.modal.querySelector('[data-soundtrack-current]');
+  if (current) current.innerHTML = soundtrackCurrentMarkup(movie);
+
+  state.soundtrackResults = [];
+
+  const results = els.modal.querySelector('[data-soundtrack-results]');
+  if (results) {
+    results.classList.add('hidden');
+    results.innerHTML = '';
+  }
+
+  updateTrackButtons();
+}
+
+async function saveSoundtrack(songTitle, songAudioUrl) {
+  const movie = state.activeMovie;
+  if (!movie || state.soundtrackSaving) return false;
+
+  state.soundtrackSaving = true;
+
+  for (const button of els.modal.querySelectorAll('[data-soundtrack-result]')) {
+    button.disabled = true;
+  }
+
+  try {
+    const data = await api(`/api/movies/${movie.tmdbId}/soundtrack`, {
+      method: 'PUT',
+      body: { songTitle, songAudioUrl },
+    });
+
+    if (!data?.soundtrack) {
+      console.error('[logtwo] Trilha salva sem confirmação do servidor.', data);
+      throw new Error('O servidor não confirmou a trilha sonora.');
+    }
+
+    if (state.trackPlayingId === movie.tmdbId) stopTrack();
+
+    movie.songTitle = data.soundtrack.title;
+    movie.songAudioUrl = data.soundtrack.audioUrl;
+    refreshSoundtrackSection();
+    await syncDiaryState();
+    toast(songAudioUrl ? 'Trilha sonora salva.' : 'Trilha sonora removida.');
+    return true;
+  } catch (error) {
+    toast(error.message, 'error');
+
+    if (state.soundtrackResults.length) {
+      renderSoundtrackResults(state.soundtrackResults);
+    }
+
+    return false;
+  } finally {
+    state.soundtrackSaving = false;
+  }
+}
+
+async function selectSoundtrack(index) {
+  const track = state.soundtrackResults[index];
+
+  if (!track || state.soundtrackSaving) return;
+
+  const audioUrl = String(track.previewUrl || '').trim();
+
+  if (!audioUrl) {
+    toast('Essa faixa não tem prévia de áudio.', 'error');
+    return;
+  }
+
+  const title = [track.trackName, track.artistName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+
+  await saveSoundtrack(title || 'Trilha sonora', audioUrl);
+}
+
+async function clearSoundtrack() {
+  if (!state.activeMovie || state.soundtrackSaving) return;
+  if (!window.confirm('Remover a trilha sonora deste filme?')) return;
+
+  await saveSoundtrack('', '');
+}
+
 function renderModal() {
   const movie = state.activeMovie;
   if (!movie) return;
@@ -2014,6 +2463,8 @@ function renderModal() {
           <span data-save-label>${ownReview ? 'Atualizar nota' : 'Salvar nota'}</span>
         </button>
       </div>
+
+      ${soundtrackSectionMarkup(movie)}
     </section>`;
 
   const partnerPanel = `
@@ -2116,6 +2567,11 @@ function renderModal() {
       <p class="max-w-2xl text-[13px] leading-relaxed ${movie.overview ? 'text-zinc-400' : 'italic text-zinc-400/60'}">
         ${escapeHtml(movie.overview || 'Sem sinopse disponível no TMDB.')}
       </p>
+
+      <div class="mt-4">
+        <p class="micro-label">onde assistir no brasil</p>
+        ${providersMarkup(movie.providers)}
+      </div>
 
       <div class="mt-5 flex flex-wrap items-center gap-2" data-modal-actions>
         ${modalActionsMarkup()}
@@ -2569,9 +3025,6 @@ async function saveProfileName(event) {
   }
 }
 
-const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
-const ITUNES_LIMIT = 5;
-
 function hideSongResults() {
   state.songSearchAbort?.abort();
   state.songSearchAbort = null;
@@ -2789,6 +3242,10 @@ function openMovie(movieId, trigger = document.activeElement) {
   state.activeMovie = null;
   state.draftRating = 0;
   state.isSaving = false;
+  state.soundtrackAbort?.abort();
+  state.soundtrackAbort = null;
+  state.soundtrackResults = [];
+  state.soundtrackSaving = false;
 
   els.modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -2830,6 +3287,9 @@ function openMovie(movieId, trigger = document.activeElement) {
 function closeModal() {
   state.modalAbort?.abort();
   state.modalAbort = null;
+  state.soundtrackAbort?.abort();
+  state.soundtrackAbort = null;
+  state.soundtrackResults = [];
   state.activeMovie = null;
   state.isSaving = false;
 
@@ -2865,6 +3325,18 @@ els.modal.addEventListener('click', (event) => {
     return;
   }
 
+  if (event.target.closest('[data-soundtrack-remove]')) {
+    clearSoundtrack();
+    return;
+  }
+
+  const soundtrackResult = event.target.closest('[data-soundtrack-result]');
+
+  if (soundtrackResult) {
+    selectSoundtrack(Number(soundtrackResult.dataset.soundtrackResult));
+    return;
+  }
+
   const star = event.target.closest('#rating-stars [data-rating]');
 
   if (star) {
@@ -2886,6 +3358,11 @@ els.modal.addEventListener('input', (event) => {
 
   const counter = els.modal.querySelector('#comment-count');
   if (counter) counter.textContent = `${event.target.value.length}/500`;
+});
+
+els.modal.addEventListener('submit', (event) => {
+  if (!event.target.matches('[data-soundtrack-form]')) return;
+  submitSoundtrackSearch(event);
 });
 
 els.modal.addEventListener('mouseover', (event) => {

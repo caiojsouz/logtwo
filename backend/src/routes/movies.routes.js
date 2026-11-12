@@ -8,9 +8,18 @@ import { requireActiveDiary } from '../middleware/diary.js';
 import { searchLimiter } from '../middleware/rateLimits.js';
 import { recordActivity } from '../services/activity.js';
 import { getDiaryReviews } from '../services/diaries.js';
-import { ensureMovie, getDiaryMovieIds, saveMovie, serializeMovie } from '../services/movies.js';
+import {
+  ensureMovie,
+  ensureMovieProviders,
+  getDiaryMovieIds,
+  saveMovie,
+  serializeMovie,
+} from '../services/movies.js';
 
 const router = express.Router();
+
+const MAX_SONG_TITLE_LENGTH = 200;
+const MAX_SONG_URL_LENGTH = 2048;
 
 router.use(requireAuth, requireActiveDiary);
 
@@ -117,6 +126,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.params.id);
     const row = await ensureMovie(movieId);
+    await ensureMovieProviders(row);
     const [reviews, interest] = await Promise.all([
       getDiaryReviews(req.diary.id, movieId),
       one('SELECT id FROM watchlist_interests WHERE user_id = ? AND movie_id = ?', [
@@ -187,6 +197,66 @@ router.delete(
     }
 
     res.json({ ok: true, movieId });
+  }),
+);
+
+router.put(
+  '/:id/soundtrack',
+  asyncHandler(async (req, res) => {
+    const movieId = parseMovieId(req.params.id);
+    const rawTitle = String(req.body?.songTitle ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const rawUrl = String(req.body?.songAudioUrl ?? '').trim();
+
+    let title = null;
+    let audioUrl = null;
+
+    if (rawUrl) {
+      if (rawUrl.length > MAX_SONG_URL_LENGTH) {
+        throw new AppError(400, 'O link da prévia é longo demais.');
+      }
+
+      let url;
+
+      try {
+        url = new URL(rawUrl);
+      } catch {
+        throw new AppError(400, 'Informe um link válido para a prévia.');
+      }
+
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new AppError(400, 'Use um link http(s) para a prévia.');
+      }
+
+      if (rawTitle.length > MAX_SONG_TITLE_LENGTH) {
+        throw new AppError(400, 'O título da trilha é longo demais.');
+      }
+
+      audioUrl = rawUrl;
+      title = rawTitle || 'Trilha sonora';
+    } else if (rawTitle) {
+      throw new AppError(400, 'Escolha uma faixa com prévia para salvar a trilha.');
+    }
+
+    const row = await one('SELECT * FROM movies WHERE tmdb_id = ?', [movieId]);
+
+    if (!row) {
+      throw new AppError(404, 'Mídia não encontrada na base.');
+    }
+
+    await run('UPDATE movies SET song_title = ?, song_audio_url = ? WHERE tmdb_id = ?', [
+      title,
+      audioUrl,
+      movieId,
+    ]);
+
+    const updated = await one('SELECT * FROM movies WHERE tmdb_id = ?', [movieId]);
+
+    res.json({
+      soundtrack: { title, audioUrl },
+      movie: serializeMovie(updated),
+    });
   }),
 );
 

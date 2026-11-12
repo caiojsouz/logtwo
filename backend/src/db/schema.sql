@@ -29,6 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_diaries_user2 ON diaries(user2_id);
 -- Cache local dos metadados do TMDB (inclui runtime para as horas totais).
 CREATE TABLE IF NOT EXISTS movies (
   tmdb_id INTEGER PRIMARY KEY,
+  media_type TEXT NOT NULL DEFAULT 'movie',
   title TEXT NOT NULL,
   original_title TEXT,
   poster_path TEXT,
@@ -38,6 +39,10 @@ CREATE TABLE IF NOT EXISTS movies (
   overview TEXT NOT NULL DEFAULT '',
   genres TEXT NOT NULL DEFAULT '[]',
   vote_average REAL,
+  song_title TEXT,
+  song_audio_url TEXT,
+  watch_providers TEXT,
+  providers_cached_at TEXT,
   cached_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 

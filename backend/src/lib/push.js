@@ -41,19 +41,30 @@ export function publicKey() {
  * Inscrições expiradas (404/410) são removidas do banco.
  */
 export async function sendPushToUsers(userIds, payload) {
-  if (!enabled || userIds.length === 0) return;
+  const targets = [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))];
 
-  const placeholders = userIds.map(() => '?').join(', ');
+  if (!enabled || targets.length === 0) {
+    return { enabled, found: 0, sent: 0 };
+  }
+
+  const placeholders = targets.map(() => '?').join(', ');
   const subscriptions = await all(
-    `SELECT id, endpoint, p256dh, auth
+    `SELECT id, user_id, endpoint, p256dh, auth
        FROM push_subscriptions
       WHERE user_id IN (${placeholders})`,
-    userIds,
+    targets,
   );
 
-  if (subscriptions.length === 0) return;
+  console.log(
+    `[logtwo] Push: ${subscriptions.length} subscription(s) encontrada(s) no banco para o(s) usuário(s) ${targets.join(', ')}.`,
+  );
+
+  if (subscriptions.length === 0) {
+    return { enabled, found: 0, sent: 0 };
+  }
 
   const body = JSON.stringify(payload);
+  let sent = 0;
 
   await Promise.all(
     subscriptions.map(async (subscription) => {
@@ -66,6 +77,7 @@ export async function sendPushToUsers(userIds, payload) {
           body,
           { TTL: 60 * 60 * 24 },
         );
+        sent += 1;
       } catch (error) {
         const status = error?.statusCode;
 
@@ -80,4 +92,6 @@ export async function sendPushToUsers(userIds, payload) {
       }
     }),
   );
+
+  return { enabled, found: subscriptions.length, sent };
 }

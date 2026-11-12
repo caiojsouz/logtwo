@@ -39,6 +39,11 @@ export async function initDatabase() {
   await ensureColumn('users', 'profile_song_cover_url', 'profile_song_cover_url TEXT');
   await ensureColumn('users', 'profile_song_title', 'profile_song_title TEXT');
   await ensureColumn('movies', 'release_date', 'release_date TEXT');
+  await ensureColumn('movies', 'media_type', "media_type TEXT NOT NULL DEFAULT 'movie'");
+  await ensureColumn('movies', 'song_title', 'song_title TEXT');
+  await ensureColumn('movies', 'song_audio_url', 'song_audio_url TEXT');
+  await ensureColumn('movies', 'watch_providers', 'watch_providers TEXT');
+  await ensureColumn('movies', 'providers_cached_at', 'providers_cached_at TEXT');
 }
 
 export async function all(sql, args = []) {

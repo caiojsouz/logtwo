@@ -106,6 +106,34 @@ export async function getUpcomingMovies() {
     .slice(0, 24);
 }
 
+/**
+ * Serviços de assinatura (flatrate) disponíveis no Brasil para o título.
+ * O mesmo endpoint existe para filmes e séries; mediaType escolhe a rota.
+ */
+export async function getWatchProviders(tmdbId, mediaType = 'movie') {
+  const path = mediaType === 'tv' ? `/tv/${tmdbId}/watch/providers` : `/movie/${tmdbId}/watch/providers`;
+  const data = await request(path);
+  const region = data?.results?.BR ?? null;
+  const flatrate = Array.isArray(region?.flatrate) ? region.flatrate : [];
+  const seen = new Set();
+
+  return {
+    link: region?.link || null,
+    providers: flatrate
+      .filter((provider) => provider?.provider_name && provider?.logo_path)
+      .filter((provider) => {
+        if (seen.has(provider.provider_id)) return false;
+        seen.add(provider.provider_id);
+        return true;
+      })
+      .map((provider) => ({
+        id: provider.provider_id,
+        name: provider.provider_name,
+        logoUrl: imageUrl(provider.logo_path, 'w92'),
+      })),
+  };
+}
+
 export async function getMovieDetails(tmdbId) {
   const data = await request(`/movie/${tmdbId}`, { language: config.tmdbLanguage });
 
