@@ -74,6 +74,10 @@ const state = {
   discoverResults: [],
   discoverError: null,
   discoverLoading: false,
+  discoverLoadingMore: false,
+  discoverPage: 1,
+  discoverTotalPages: 0,
+  discoverHasMore: false,
   discoverAbort: null,
   discoverSearchAbort: null,
   discoverSaving: new Set(),
@@ -234,6 +238,8 @@ const els = {
   discoverSearch: document.querySelector('#discover-search'),
   discoverChips: document.querySelector('#discover-chips'),
   discoverGrid: document.querySelector('#discover-grid'),
+  discoverSentinel: document.querySelector('#scroll-sentinel'),
+  discoverSentinelSpinner: document.querySelector('#scroll-sentinel-spinner'),
 };
 
 normalizeNavigationMarkup();
@@ -2036,6 +2042,74 @@ function renderDiscoverChips() {
   }).join('');
 }
 
+function resetDiscoverPagination() {
+  state.discoverPage = 1;
+  state.discoverTotalPages = 0;
+  state.discoverHasMore = false;
+  state.discoverLoadingMore = false;
+}
+
+/**
+ * Sem voltar ao topo, trocar de pílula ou refazer a busca com o modal rolado
+ * deixa o sentinela visível e encadeia páginas antes do usuário ver o começo.
+ */
+function resetDiscoverScroll() {
+  const scroller = els.discoverGrid?.closest('.overflow-y-auto');
+
+  if (scroller) scroller.scrollTop = 0;
+}
+
+function applyDiscoverPageMeta(data, fallbackPage) {
+  const page = Number.isInteger(data?.page) && data.page > 0 ? data.page : fallbackPage;
+  const totalPages =
+    Number.isInteger(data?.totalPages) && data.totalPages > 0 ? data.totalPages : page;
+
+  state.discoverPage = page;
+  state.discoverTotalPages = totalPages;
+  state.discoverHasMore = page < totalPages;
+}
+
+let discoverSentinelObserver = null;
+
+function updateDiscoverSentinel() {
+  if (!els.discoverSentinel) return;
+
+  const show = Boolean(discoverList()) && state.discoverHasMore;
+
+  els.discoverSentinel.classList.toggle('hidden', !show);
+  els.discoverSentinel.classList.toggle('flex', show);
+
+  if (els.discoverSentinelSpinner) {
+    els.discoverSentinelSpinner.classList.toggle('hidden', !state.discoverLoadingMore);
+  }
+
+  // Um sentinela que já estava visível não gera novo callback quando volta a
+  // aparecer depois de um append; reobservar força a checagem da interseção.
+  if (show && discoverSentinelObserver) {
+    discoverSentinelObserver.unobserve(els.discoverSentinel);
+    discoverSentinelObserver.observe(els.discoverSentinel);
+  }
+}
+
+function setupDiscoverSentinel() {
+  if (!els.discoverSentinel || typeof IntersectionObserver !== 'function') return;
+
+  discoverSentinelObserver?.disconnect();
+
+  discoverSentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) loadMoreDiscover();
+    },
+    {
+      root: els.discoverSentinel.closest('.overflow-y-auto') ?? null,
+      rootMargin: '300px 0px',
+      threshold: 0,
+    },
+  );
+
+  discoverSentinelObserver.observe(els.discoverSentinel);
+}
+
 function renderDiscoverLoading() {
   els.discoverGrid.className =
     'grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5';
@@ -2048,6 +2122,7 @@ function renderDiscoverLoading() {
         <div class="mt-1.5 h-2 w-1/2 rounded bg-zinc-800/70"></div>
       </div>`,
   ).join('');
+  updateDiscoverSentinel();
 }
 
 function renderDiscoverMessage({ title, detail, retry = false }) {
@@ -2071,6 +2146,61 @@ function renderDiscoverMessage({ title, detail, retry = false }) {
           : ''
       }
     </div>`;
+  updateDiscoverSentinel();
+}
+
+function discoverCardMarkup(item, savedKeys) {
+  const key = discoverItemKey(item);
+  const saved = savedKeys.has(key);
+  const saving = state.discoverSaving.has(key);
+  const mediaLabel = item.mediaType === 'tv' ? 'Série' : 'Filme';
+
+  return `
+    <button
+      type="button"
+      data-discover-add="${item.tmdbId}"
+      data-discover-media="${escapeHtml(item.mediaType || 'movie')}"
+      aria-label="${saved ? 'Já está na lista' : 'Adicionar à lista'}: ${escapeHtml(item.title)}"
+      ${saved || saving ? 'disabled' : ''}
+      class="group relative block w-full text-left disabled:cursor-not-allowed"
+    >
+      <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+        ${
+          item.posterUrl
+            ? `<img src="${escapeHtml(item.posterUrl)}" alt="" loading="lazy" decoding="async" class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />`
+            : `<div class="flex h-full w-full items-center justify-center text-zinc-600">${FILM_ICON}</div>`
+        }
+        <span class="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-zinc-950/5 to-transparent opacity-0 transition group-hover:opacity-100"></span>
+        <span
+          class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border backdrop-blur transition ${
+            saved
+              ? 'border-accent/40 bg-accent/15 text-accent'
+              : `border-zinc-700/80 bg-zinc-950/80 text-zinc-200 ${saving ? '' : 'opacity-0 group-hover:opacity-100'}`
+          }"
+        >
+          ${saving ? '<span class="spinner spinner-light !h-3 !w-3"></span>' : saved ? CHECK_ICON : PLUS_ICON}
+        </span>
+      </div>
+      <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
+      <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+        ${item.year ? `${escapeHtml(item.year)} · ` : ''}${mediaLabel}
+      </p>
+    </button>`;
+}
+
+function appendDiscoverGrid(items) {
+  if (!items.length) return;
+
+  if (!els.discoverGrid.classList.contains('grid')) {
+    renderDiscoverGrid();
+    return;
+  }
+
+  const savedKeys = discoverSavedKeys();
+  els.discoverGrid.insertAdjacentHTML(
+    'beforeend',
+    items.map((item) => discoverCardMarkup(item, savedKeys)).join(''),
+  );
 }
 
 function renderDiscoverGrid() {
@@ -2108,141 +2238,199 @@ function renderDiscoverGrid() {
   els.discoverGrid.className =
     'grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5';
   els.discoverGrid.innerHTML = state.discoverResults
-    .map((item) => {
-      const key = discoverItemKey(item);
-      const saved = savedKeys.has(key);
-      const saving = state.discoverSaving.has(key);
-      const mediaLabel = item.mediaType === 'tv' ? 'Série' : 'Filme';
-
-      return `
-        <button
-          type="button"
-          data-discover-add="${item.tmdbId}"
-          data-discover-media="${escapeHtml(item.mediaType || 'movie')}"
-          aria-label="${saved ? 'Já está na lista' : 'Adicionar à lista'}: ${escapeHtml(item.title)}"
-          ${saved || saving ? 'disabled' : ''}
-          class="group relative block w-full text-left disabled:cursor-not-allowed"
-        >
-          <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-            ${
-              item.posterUrl
-                ? `<img src="${escapeHtml(item.posterUrl)}" alt="" loading="lazy" decoding="async" class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />`
-                : `<div class="flex h-full w-full items-center justify-center text-zinc-600">${FILM_ICON}</div>`
-            }
-            <span class="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-zinc-950/5 to-transparent opacity-0 transition group-hover:opacity-100"></span>
-            <span
-              class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border backdrop-blur transition ${
-                saved
-                  ? 'border-accent/40 bg-accent/15 text-accent'
-                  : `border-zinc-700/80 bg-zinc-950/80 text-zinc-200 ${saving ? '' : 'opacity-0 group-hover:opacity-100'}`
-              }"
-            >
-              ${saving ? '<span class="spinner spinner-light !h-3 !w-3"></span>' : saved ? CHECK_ICON : PLUS_ICON}
-            </span>
-          </div>
-          <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
-          <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500">
-            ${item.year ? `${escapeHtml(item.year)} · ` : ''}${mediaLabel}
-          </p>
-        </button>`;
-    })
+    .map((item) => discoverCardMarkup(item, savedKeys))
     .join('');
+  updateDiscoverSentinel();
 }
 
-async function loadDiscover(filter = state.discoverFilter) {
+async function loadDiscover(filter = state.discoverFilter, { page = 1, append = false } = {}) {
   if (!discoverList()) return;
 
-  state.discoverSearchAbort?.abort();
-  state.discoverSearchAbort = null;
-  state.discoverAbort?.abort();
+  if (!append) {
+    state.discoverSearchAbort?.abort();
+    state.discoverSearchAbort = null;
+    state.discoverAbort?.abort();
+    resetDiscoverPagination();
+    resetDiscoverScroll();
+  }
 
   const controller = new AbortController();
   state.discoverAbort = controller;
 
   state.discoverFilter = filter;
-  state.discoverQuery = '';
-  state.discoverResults = [];
-  state.discoverError = null;
-  state.discoverLoading = true;
 
-  renderDiscoverChips();
-  renderDiscoverGrid();
+  if (append) {
+    state.discoverLoadingMore = true;
+    updateDiscoverSentinel();
+  } else {
+    state.discoverQuery = '';
+    state.discoverResults = [];
+    state.discoverError = null;
+    state.discoverLoading = true;
+
+    renderDiscoverChips();
+    renderDiscoverGrid();
+  }
 
   try {
-    const data = await api(`/api/tmdb/discover?filter=${encodeURIComponent(filter)}`, {
-      signal: controller.signal,
-    });
+    const data = await api(
+      `/api/tmdb/discover?filter=${encodeURIComponent(filter)}&page=${page}`,
+      { signal: controller.signal },
+    );
 
     if (controller.signal.aborted) return;
 
     if (!Array.isArray(data?.results)) {
       console.error('[logtwo] Descoberta sem lista de resultados.', data);
+
+      if (append) throw new Error('Não foi possível carregar mais títulos.');
+
       state.discoverError = 'O servidor devolveu uma lista inválida. Tente novamente.';
       return;
     }
 
-    state.discoverResults = data.results;
+    const incoming = data.results;
+
+    if (append) {
+      const seen = new Set(state.discoverResults.map(discoverItemKey));
+      const fresh = incoming.filter((item) => !seen.has(discoverItemKey(item)));
+
+      state.discoverResults = [...state.discoverResults, ...fresh];
+      applyDiscoverPageMeta(data, page);
+      if (!incoming.length) state.discoverHasMore = false;
+      appendDiscoverGrid(fresh);
+    } else {
+      state.discoverResults = incoming;
+      applyDiscoverPageMeta(data, page);
+      renderDiscoverGrid();
+    }
   } catch (error) {
     if (error.name === 'AbortError') return;
 
     console.error('[logtwo] Falha na descoberta', error);
-    state.discoverError = error.message;
+
+    if (append) {
+      toast('Não foi possível carregar mais títulos.', 'error');
+      state.discoverHasMore = false;
+    } else state.discoverError = error.message;
   } finally {
     if (state.discoverAbort === controller) {
       state.discoverAbort = null;
       state.discoverLoading = false;
-      renderDiscoverGrid();
+      state.discoverLoadingMore = false;
+
+      if (!append) renderDiscoverGrid();
+      updateDiscoverSentinel();
     }
   }
 }
 
-async function performDiscoverSearch(query) {
+async function performDiscoverSearch(query, { page = 1, append = false } = {}) {
   if (query.length < 2 || !discoverList()) return;
-  if (els.discoverSearch.value.trim() !== query) return;
+  if (!append && els.discoverSearch.value.trim() !== query) return;
 
-  state.discoverAbort?.abort();
-  state.discoverAbort = null;
-  state.discoverSearchAbort?.abort();
+  if (!append) {
+    state.discoverAbort?.abort();
+    state.discoverAbort = null;
+    state.discoverSearchAbort?.abort();
+    resetDiscoverPagination();
+    resetDiscoverScroll();
+  }
 
   const controller = new AbortController();
   state.discoverSearchAbort = controller;
 
   state.discoverQuery = query;
-  state.discoverResults = [];
-  state.discoverError = null;
-  state.discoverLoading = true;
-  renderDiscoverGrid();
+
+  if (append) {
+    state.discoverLoadingMore = true;
+    updateDiscoverSentinel();
+  } else {
+    state.discoverResults = [];
+    state.discoverError = null;
+    state.discoverLoading = true;
+    renderDiscoverGrid();
+  }
 
   try {
-    const data = await api(`/api/movies/search?q=${encodeURIComponent(query)}`, {
-      signal: controller.signal,
+    const params = new URLSearchParams({
+      q: query,
+      filter: state.discoverFilter,
+      page: String(page),
     });
+    const data = await api(`/api/tmdb/search?${params}`, { signal: controller.signal });
 
-    if (controller.signal.aborted || els.discoverSearch.value.trim() !== query) return;
+    if (controller.signal.aborted || (!append && els.discoverSearch.value.trim() !== query)) {
+      return;
+    }
 
     if (!Array.isArray(data?.results)) {
       console.error('[logtwo] Busca da descoberta sem lista de resultados.', data);
+
+      if (append) throw new Error('Não foi possível carregar mais títulos.');
+
       state.discoverError = 'O servidor devolveu uma busca inválida. Tente novamente.';
       return;
     }
 
-    state.discoverResults = data.results.map((movie) => ({
+    const incoming = data.results.map((movie) => ({
       ...movie,
       mediaType: movie.mediaType || 'movie',
     }));
+
+    if (append) {
+      const seen = new Set(state.discoverResults.map(discoverItemKey));
+      const fresh = incoming.filter((item) => !seen.has(discoverItemKey(item)));
+
+      state.discoverResults = [...state.discoverResults, ...fresh];
+      applyDiscoverPageMeta(data, page);
+      if (!incoming.length) state.discoverHasMore = false;
+      appendDiscoverGrid(fresh);
+    } else {
+      state.discoverResults = incoming;
+      applyDiscoverPageMeta(data, page);
+      renderDiscoverGrid();
+    }
   } catch (error) {
     if (error.name === 'AbortError') return;
 
     console.error('[logtwo] Falha na busca da descoberta', error);
-    state.discoverError = error.message;
+
+    if (append) {
+      toast('Não foi possível carregar mais títulos.', 'error');
+      state.discoverHasMore = false;
+    } else state.discoverError = error.message;
   } finally {
     if (state.discoverSearchAbort === controller) {
       state.discoverSearchAbort = null;
       state.discoverLoading = false;
-      renderDiscoverGrid();
+      state.discoverLoadingMore = false;
+
+      if (!append) renderDiscoverGrid();
+      updateDiscoverSentinel();
     }
   }
 }
+
+function loadMoreDiscover() {
+  if (!discoverList()) return;
+  if (state.discoverLoading || state.discoverLoadingMore || !state.discoverHasMore) return;
+
+  if (state.discoverPage >= state.discoverTotalPages) {
+    state.discoverHasMore = false;
+    updateDiscoverSentinel();
+    return;
+  }
+
+  const nextPage = state.discoverPage + 1;
+
+  if (state.discoverQuery.length >= 2) {
+    performDiscoverSearch(state.discoverQuery, { page: nextPage, append: true });
+  } else {
+    loadDiscover(state.discoverFilter, { page: nextPage, append: true });
+  }
+}
+
 
 const scheduleDiscoverSearch = debounce((query) => performDiscoverSearch(query), 400);
 
@@ -2307,6 +2495,8 @@ function openDiscover(listId, trigger = document.activeElement) {
   state.discoverError = null;
   state.discoverLoading = false;
   state.discoverSaving.clear();
+  resetDiscoverPagination();
+  resetDiscoverScroll();
 
   if (els.discoverSearch) els.discoverSearch.value = '';
   if (els.discoverListName) {
@@ -2318,6 +2508,7 @@ function openDiscover(listId, trigger = document.activeElement) {
 
   renderDiscoverChips();
   renderDiscoverGrid();
+  updateDiscoverSentinel();
   loadDiscover('em_alta');
 
   els.discoverModal.querySelector('[data-close-discover-button]')?.focus();
@@ -2331,6 +2522,8 @@ function closeDiscover() {
   state.discoverLoading = false;
   state.discoverListId = null;
   state.discoverSaving.clear();
+  resetDiscoverPagination();
+  updateDiscoverSentinel();
 
   els.discoverModal.classList.add('hidden');
 
@@ -4727,5 +4920,6 @@ async function boot() {
 
 // A navegação é ligada antes de qualquer chamada de API: as abas funcionam
 // mesmo se o carregamento dos dados falhar.
+setupDiscoverSentinel();
 setActiveTab('shelf', { animate: false });
 boot();

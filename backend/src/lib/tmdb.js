@@ -54,6 +54,24 @@ export function imageUrl(path, size = 'w500') {
   return path ? `${IMAGE_BASE}/${size}${path}` : null;
 }
 
+const TMDB_MAX_PAGE = 500;
+
+export function normalizePage(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') return 1;
+
+  const page = Number(rawValue);
+
+  if (!Number.isInteger(page) || page < 1) return null;
+
+  return Math.min(page, TMDB_MAX_PAGE);
+}
+
+function totalPagesFrom(data, fallbackPage) {
+  const total = Number(data?.total_pages);
+
+  return Math.min(Number.isInteger(total) && total > 0 ? total : fallbackPage, TMDB_MAX_PAGE);
+}
+
 function toRuntime(value) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
@@ -80,6 +98,69 @@ export async function searchMovies(query) {
     }))
     .filter((movie) => movie.title)
     .slice(0, 12);
+}
+
+export function isAnimeSearchItem(item) {
+  return (
+    item?.original_language === 'ja' &&
+    Array.isArray(item?.genre_ids) &&
+    item.genre_ids.includes(16)
+  );
+}
+
+function mapSearchItem(item, mediaType) {
+  const type = mediaType || item.media_type;
+
+  if (type !== 'movie' && type !== 'tv') return null;
+
+  const releaseDate = type === 'tv' ? item.first_air_date || null : item.release_date || null;
+  const title =
+    type === 'tv'
+      ? item.name || item.original_name || null
+      : item.title || item.original_title || null;
+
+  if (!title) return null;
+
+  return {
+    tmdbId: item.id,
+    mediaType: type,
+    title,
+    originalTitle: (type === 'tv' ? item.original_name : item.original_title) || null,
+    releaseDate,
+    year: releaseDate ? releaseDate.slice(0, 4) : null,
+    posterPath: item.poster_path || null,
+    posterUrl: imageUrl(item.poster_path, 'w342'),
+    overview: item.overview || '',
+    voteAverage: typeof item.vote_average === 'number' ? item.vote_average : null,
+  };
+}
+
+/**
+ * Busca mista (filmes + séries) usada pela descoberta das listas.
+ * Com o filtro "anime", consulta /search/tv e mantém apenas animações japonesas.
+ */
+export async function searchTitles(query, { page = 1, filter = null } = {}) {
+  const safePage = Math.min(Math.max(1, page), TMDB_MAX_PAGE);
+  const animeOnly = filter === 'anime';
+
+  const data = await request(animeOnly ? '/search/tv' : '/search/multi', {
+    query,
+    language: config.tmdbLanguage,
+    include_adult: 'false',
+    page: safePage,
+    ...(animeOnly ? { with_original_language: 'ja' } : {}),
+  });
+
+  const results = (data.results || [])
+    .filter((item) => (animeOnly ? isAnimeSearchItem(item) : true))
+    .map((item) => mapSearchItem(item, animeOnly ? 'tv' : item.media_type))
+    .filter(Boolean);
+
+  return {
+    page: Number.isInteger(data.page) && data.page > 0 ? data.page : safePage,
+    totalPages: totalPagesFrom(data, safePage),
+    results,
+  };
 }
 
 export async function getUpcomingMovies() {
@@ -190,25 +271,27 @@ export function normalizeDiscoverFilter(rawValue) {
  * Catálogo popular para a vitrine de descoberta das listas.
  * Cada filtro troca o endpoint e os parâmetros de gênero/idioma no TMDB.
  */
-export async function discoverTitles(filter) {
+export async function discoverTitles(filter, page = 1) {
   const entry = DISCOVER_FILTERS[filter];
 
   if (!entry) {
     throw new AppError(400, 'Filtro de descoberta inválido.');
   }
 
+  const safePage = Math.min(Math.max(1, page), TMDB_MAX_PAGE);
+
   const data = await request(entry.path, {
     language: config.tmdbLanguage,
     sort_by: 'popularity.desc',
     include_adult: 'false',
-    page: 1,
+    page: safePage,
     ...(entry.withGenres ? { with_genres: entry.withGenres } : {}),
     ...(entry.withOriginalLanguage
       ? { with_original_language: entry.withOriginalLanguage }
       : {}),
   });
 
-  return (data.results || [])
+  const results = (data.results || [])
     .map((item) => {
       const releaseDate = item.release_date || item.first_air_date || null;
 
@@ -227,4 +310,10 @@ export async function discoverTitles(filter) {
     })
     .filter((item) => item.title)
     .slice(0, 20);
+
+  return {
+    page: Number.isInteger(data.page) && data.page > 0 ? data.page : safePage,
+    totalPages: totalPagesFrom(data, safePage),
+    results,
+  };
 }
