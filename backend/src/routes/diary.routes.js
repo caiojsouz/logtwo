@@ -57,6 +57,7 @@ router.get(
               r.user_id,
               r.rating,
               r.comment,
+              r.watched_at,
               r.created_at AS review_created_at,
               r.updated_at AS review_updated_at
          FROM reviews r
@@ -82,6 +83,7 @@ router.get(
           user_id: row.user_id,
           rating: row.rating,
           comment: row.comment,
+          watched_at: row.watched_at,
           created_at: row.review_created_at,
           updated_at: row.review_updated_at,
         }),

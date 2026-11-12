@@ -41,7 +41,7 @@ export async function getDiaryReviews(diaryId, movieId = null) {
   }
 
   return all(
-    `SELECT r.id, r.movie_id, r.user_id, r.rating, r.comment, r.created_at, r.updated_at
+    `SELECT r.id, r.movie_id, r.user_id, r.rating, r.comment, r.watched_at, r.created_at, r.updated_at
        FROM reviews r
       WHERE r.diary_id = ? ${movieFilter}
       ORDER BY r.updated_at DESC, r.id DESC`,

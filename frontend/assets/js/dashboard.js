@@ -583,10 +583,31 @@ function ratingChip(member, review, index) {
     </div>`;
 }
 
+function localDateValue(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function reviewWatchedDate(review) {
+  if (review?.watchedAt) return review.watchedAt;
+
+  if (review?.createdAt) {
+    const time = Date.parse(review.createdAt);
+    if (Number.isFinite(time)) return localDateValue(new Date(time));
+  }
+
+  return localDateValue(new Date());
+}
+
 function passportStampDate(movie) {
-  const timestamps = (movie.reviews || [])
+  const reviews = movie.reviews || [];
+  const explicitDates = reviews
+    .map((review) => (review.watchedAt ? Date.parse(`${review.watchedAt}T00:00:00`) : NaN))
+    .filter((time) => Number.isFinite(time));
+  const fallbackDates = reviews
     .map((review) => Date.parse(review.createdAt))
     .filter((time) => Number.isFinite(time));
+  const timestamps = explicitDates.length ? explicitDates : fallbackDates;
 
   if (timestamps.length === 0) return null;
 
@@ -2469,6 +2490,15 @@ function renderModal() {
         ${starButtons(state.draftRating)}
       </div>
 
+      <label for="review-watched-at" class="micro-label mt-5 block">data da sessão</label>
+      <input
+        id="review-watched-at"
+        type="date"
+        value="${escapeHtml(reviewWatchedDate(ownReview))}"
+        style="color-scheme: dark"
+        class="mt-2 w-full rounded-xl border border-panel/30 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 transition focus:border-accent/60 focus:outline-none"
+      />
+
       <label for="review-comment" class="micro-label mt-5 block">comentário</label>
       <textarea
         id="review-comment"
@@ -2683,6 +2713,7 @@ async function saveReview() {
   const movie = state.activeMovie;
   const hadReview = movie.reviews.some((review) => review.userId === state.me.id);
   const comment = els.modal.querySelector('#review-comment')?.value ?? '';
+  const watchedAt = els.modal.querySelector('#review-watched-at')?.value || null;
 
   state.isSaving = true;
   updateSaveButton();
@@ -2690,7 +2721,7 @@ async function saveReview() {
   try {
     const data = await api(`/api/movies/${movie.tmdbId}/review`, {
       method: 'PUT',
-      body: { rating: state.draftRating, comment },
+      body: { rating: state.draftRating, comment, watchedAt },
     });
 
     if (!data?.review) {

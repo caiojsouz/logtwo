@@ -57,6 +57,7 @@ export function serializeReview(review) {
     userId: review.user_id,
     rating: review.rating,
     comment: review.comment,
+    watchedAt: review.watched_at || null,
     createdAt: review.created_at,
     updatedAt: review.updated_at,
   };

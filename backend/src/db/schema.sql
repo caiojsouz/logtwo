@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   user_id INTEGER NOT NULL,
   rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment TEXT NOT NULL DEFAULT '',
+  watched_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   UNIQUE (diary_id, movie_id, user_id),

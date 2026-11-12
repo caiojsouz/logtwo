@@ -44,6 +44,7 @@ export async function initDatabase() {
   await ensureColumn('movies', 'song_audio_url', 'song_audio_url TEXT');
   await ensureColumn('movies', 'watch_providers', 'watch_providers TEXT');
   await ensureColumn('movies', 'providers_cached_at', 'providers_cached_at TEXT');
+  await ensureColumn('reviews', 'watched_at', 'watched_at TEXT');
 }
 
 export async function all(sql, args = []) {

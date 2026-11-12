@@ -37,6 +37,29 @@ function parseMovieId(rawId) {
   return movieId;
 }
 
+function parseWatchedAt(rawValue) {
+  const raw = String(rawValue ?? '').trim();
+
+  if (!raw) return null;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new AppError(400, 'Informe uma data válida para a sessão.');
+  }
+
+  const [year, month, day] = raw.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new AppError(400, 'Informe uma data válida para a sessão.');
+  }
+
+  return raw;
+}
+
 router.get(
   '/search',
   searchLimiter,
@@ -269,6 +292,7 @@ router.put(
       .replace(/\r\n/g, '\n')
       .replace(/\u0000/g, '')
       .trim();
+    const watchedAt = parseWatchedAt(req.body?.watchedAt);
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new AppError(400, 'A nota deve ser de 1 a 5 estrelas.');
@@ -281,13 +305,14 @@ router.put(
     const movie = await ensureMovie(movieId);
 
     await run(
-      `INSERT INTO reviews (diary_id, movie_id, user_id, rating, comment)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO reviews (diary_id, movie_id, user_id, rating, comment, watched_at)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(diary_id, movie_id, user_id) DO UPDATE SET
          rating = excluded.rating,
          comment = excluded.comment,
+         watched_at = excluded.watched_at,
          updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`,
-      [req.diary.id, movieId, req.user.id, rating, comment],
+      [req.diary.id, movieId, req.user.id, rating, comment, watchedAt],
     );
 
     // Já foi assistido: sai do Em Breve para não ficar preso sem botão de remover.
@@ -297,7 +322,7 @@ router.put(
     ]);
 
     const review = await one(
-      `SELECT id, user_id, rating, comment, created_at, updated_at
+      `SELECT id, user_id, rating, comment, watched_at, created_at, updated_at
          FROM reviews
         WHERE diary_id = ? AND movie_id = ? AND user_id = ?`,
       [req.diary.id, movieId, req.user.id],
