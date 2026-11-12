@@ -1,10 +1,12 @@
 import { api, logout } from './api.js';
 import {
+  daysUntil,
   debounce,
   escapeHtml,
   firstName,
   formatDuration,
   formatHoursShort,
+  formatRelativeTime,
   formatSince,
   hideBootScreen,
   initials,
@@ -46,6 +48,12 @@ const state = {
   isSaving: false,
   actionBusy: false,
   avatarBusy: false,
+  timeline: [],
+  upcoming: [],
+  upcomingLoaded: false,
+  notifications: 'unknown',
+  pushPublicKey: '',
+  pushBusy: false,
 };
 
 const MAX_FAVORITES = 4;
@@ -55,6 +63,8 @@ const ROULETTE_DURATION_MS = 3000;
 const TAB_HASH = {
   watched: '#assistidos',
   watchlist: '#indicacoes',
+  upcoming: '#embreve',
+  timeline: '#timeline',
   profile: '#perfil',
 };
 const HASH_TAB = Object.fromEntries(
@@ -63,17 +73,21 @@ const HASH_TAB = Object.fromEntries(
 const TAB_BY_ID = {
   'tab-watched': 'watched',
   'tab-watchlist': 'watchlist',
+  'tab-upcoming': 'upcoming',
+  'tab-timeline': 'timeline',
   'tab-profile': 'profile',
 };
 const PANEL_BY_ID = {
   'panel-watched': 'watched',
   'panel-watchlist': 'watchlist',
+  'panel-upcoming': 'upcoming',
+  'panel-timeline': 'timeline',
   'panel-profile': 'profile',
 };
 
 function normalizeNavigationMarkup() {
   const buttons = document.querySelectorAll(
-    '#tab-watched, #tab-watchlist, #tab-profile, [data-tab]',
+    '#tab-watched, #tab-watchlist, #tab-upcoming, #tab-timeline, #tab-profile, [data-tab]',
   );
 
   for (const button of buttons) {
@@ -83,7 +97,7 @@ function normalizeNavigationMarkup() {
   }
 
   const panels = document.querySelectorAll(
-    '#panel-watched, #panel-watchlist, #panel-profile, [data-panel]',
+    '#panel-watched, #panel-watchlist, #panel-upcoming, #panel-timeline, #panel-profile, [data-panel]',
   );
 
   for (const panel of panels) {
@@ -116,6 +130,16 @@ const els = {
   watchlistGrid: document.querySelector('#watchlist-grid'),
   watchlistEmpty: document.querySelector('#watchlist-empty'),
   watchlistSearchButton: document.querySelector('#watchlist-search-btn'),
+  upcomingGrid: document.querySelector('#upcoming-grid'),
+  upcomingCount: document.querySelector('#upcoming-count'),
+  upcomingEmpty: document.querySelector('#upcoming-empty'),
+  upcomingEmptyText: document.querySelector('#upcoming-empty-text'),
+  timelineList: document.querySelector('#timeline-list'),
+  timelineCount: document.querySelector('#timeline-count'),
+  timelineEmpty: document.querySelector('#timeline-empty'),
+  notificationsCard: document.querySelector('#notifications-card'),
+  notificationsButton: document.querySelector('#notifications-button'),
+  notificationsStatus: document.querySelector('#notifications-status'),
   profileAvatar: document.querySelector('#profile-avatar'),
   profileName: document.querySelector('#profile-name'),
   profileEmail: document.querySelector('#profile-email'),
@@ -206,7 +230,8 @@ const formatAverage = (value) =>
 
 const formatShortDate = (isoDate) => {
   if (!isoDate) return '';
-  const date = new Date(isoDate);
+  // Datas do TMDB são só dia (YYYY-MM-DD): interpreta no fuso local para não voltar um dia.
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? `${isoDate}T00:00:00` : isoDate);
   if (Number.isNaN(date.getTime())) return '';
 
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' })
@@ -537,6 +562,134 @@ function renderWatchlist() {
   els.watchlistGrid.innerHTML = state.watchlist.map(renderWatchlistCard).join('');
 }
 
+function upcomingCountdown(movie) {
+  const days = daysUntil(movie.releaseDate);
+
+  if (days === null) return null;
+  if (days <= 0) return 'estreia';
+  if (days === 1) return 'estreia amanhã';
+  return `faltam ${days} dias`;
+}
+
+function renderUpcomingCard(movie, index) {
+  const delay = Math.min(index * 45, 360);
+  const countdown = upcomingCountdown(movie);
+  const meta = [countdown, movie.year].filter(Boolean).join(' · ');
+  const date = formatShortDate(movie.releaseDate);
+
+  return `
+    <article class="card-enter group relative" style="animation-delay:${delay}ms">
+      <button
+        type="button"
+        data-movie-id="${movie.tmdbId}"
+        class="group block w-full text-left"
+        aria-label="Abrir ${escapeHtml(movie.title)}"
+      >
+        <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10 sm:rounded-2xl">
+          ${posterMarkup(movie)}
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/75 via-transparent to-transparent"></div>
+          ${
+            date
+              ? `<span class="absolute left-2 top-2 rounded-full border border-accent/25 bg-base/70 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.1em] text-accent backdrop-blur sm:left-2.5 sm:top-2.5 sm:px-2 sm:text-[8px]">${escapeHtml(date)}</span>`
+              : ''
+          }
+        </div>
+
+        <div class="mt-2 px-0.5 sm:mt-3">
+          <h3 class="truncate text-[11px] font-semibold leading-snug text-zinc-100 sm:text-[13px]">
+            ${escapeHtml(movie.title)}
+          </h3>
+          <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">
+            ${escapeHtml(meta || 'data a confirmar')}
+          </p>
+        </div>
+      </button>
+    </article>`;
+}
+
+function renderUpcoming() {
+  const count = state.upcoming.length;
+
+  els.upcomingCount.textContent =
+    count === 0 ? 'Nenhum lançamento futuro na base' : `${count} ${count === 1 ? 'título chegando' : 'títulos chegando'}`;
+
+  els.upcomingGrid.classList.toggle('hidden', count === 0);
+  els.upcomingEmpty.classList.toggle('hidden', count > 0);
+
+  if (els.upcomingEmptyText && count === 0) {
+    els.upcomingEmptyText.textContent =
+      'Não encontramos estreias futuras agora. Assim que um título com data futura entrar na base, ele aparece aqui.';
+  }
+
+  els.upcomingGrid.innerHTML = count === 0 ? '' : state.upcoming.map(renderUpcomingCard).join('');
+}
+
+const TIMELINE_COPY = {
+  added: { verb: 'adicionou', suffix: 'às indicações' },
+  rated: { verb: 'avaliou', suffix: 'na estante' },
+  favorited: { verb: 'favoritou', suffix: 'no perfil' },
+};
+
+function renderTimelineItem(event, index) {
+  const copy = TIMELINE_COPY[event.actionType] || { verb: 'registrou', suffix: '' };
+  const movieId = Number(event.movieId);
+  const hasMovie = Number.isSafeInteger(movieId) && movieId > 0;
+  const delay = Math.min(index * 40, 320);
+
+  return `
+    <li
+      class="card-enter flex items-start gap-3 rounded-2xl border border-panel/25 bg-panel/[0.04] p-4 sm:gap-4 sm:p-5"
+      style="animation-delay:${delay}ms"
+    >
+      ${avatarMarkup(event.user, {
+        size: 'h-9 w-9 sm:h-10 sm:w-10',
+        textSize: 'text-[10px]',
+        tone: 'bg-accent/15 text-accent',
+        border: 'border border-panel/40',
+      })}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm leading-relaxed text-zinc-300">
+          <span class="font-semibold text-zinc-100">${escapeHtml(firstName(event.user?.name) || 'Alguém')}</span>
+          ${copy.verb}
+          ${
+            hasMovie
+              ? `<button type="button" data-movie-id="${movieId}" class="font-medium text-accent underline-offset-4 transition hover:underline">${escapeHtml(event.mediaTitle)}</button>`
+              : `<span class="font-medium text-zinc-100">${escapeHtml(event.mediaTitle)}</span>`
+          }
+          ${copy.suffix ? `<span class="text-zinc-400"> ${copy.suffix}</span>` : ''}
+        </p>
+        <p class="mt-1 text-[9px] uppercase tracking-[0.14em] text-zinc-400/60">
+          ${escapeHtml(formatRelativeTime(event.createdAt))}
+        </p>
+      </div>
+    </li>`;
+}
+
+function renderTimeline() {
+  const events = state.timeline;
+
+  els.timelineCount.textContent =
+    events.length === 0
+      ? 'Nenhum registro recente'
+      : `${events.length} ${events.length === 1 ? 'registro recente' : 'registros recentes'}`;
+
+  els.timelineList.classList.toggle('hidden', events.length === 0);
+  els.timelineEmpty.classList.toggle('hidden', events.length > 0);
+  els.timelineList.innerHTML = events.map(renderTimelineItem).join('');
+}
+
+async function refreshTimeline() {
+  try {
+    const data = await api('/api/timeline');
+    if (Array.isArray(data?.events)) {
+      state.timeline = data.events;
+      renderTimeline();
+    }
+  } catch (error) {
+    console.warn('[logtwo] Não foi possível atualizar a timeline.', error);
+  }
+}
+
 function roulettePosterMarkup(movie) {
   if (movie.posterUrl) {
     return `<img src="${escapeHtml(movie.posterUrl)}" alt="" class="h-full w-full object-cover" />`;
@@ -709,6 +862,132 @@ function renderFavoriteSlot(movie, { editable = true } = {}) {
           : ''
       }
     </div>`;
+}
+
+const NOTIFICATION_COPY = {
+  idle: 'Receba um aviso quando sua dupla registrar algo.',
+  subscribed: 'Ativo neste dispositivo — avisamos quando sua dupla registrar algo.',
+  denied: 'Permissão bloqueada. Libere as notificações nas configurações do site.',
+  unavailable: 'As notificações ainda não estão configuradas no servidor.',
+  unsupported: 'Este navegador não suporta notificações push.',
+};
+
+function renderNotifications() {
+  if (!els.notificationsCard) return;
+
+  const hide =
+    !viewingSelfProfile() ||
+    state.notifications === 'unknown' ||
+    state.notifications === 'unsupported' ||
+    state.notifications === 'unavailable';
+
+  els.notificationsCard.classList.toggle('hidden', hide);
+  els.notificationsCard.classList.toggle('flex', !hide);
+
+  if (hide) return;
+
+  const active = state.notifications === 'subscribed';
+  const blocked = state.notifications === 'denied';
+
+  els.notificationsStatus.textContent = NOTIFICATION_COPY[state.notifications] || NOTIFICATION_COPY.idle;
+  els.notificationsButton.textContent = state.pushBusy
+    ? 'Ativando…'
+    : active
+      ? 'Ativado'
+      : blocked
+        ? 'Bloqueado'
+        : 'Ativar Notificações';
+  els.notificationsButton.disabled = state.pushBusy || active || blocked;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+async function setupNotifications() {
+  if (
+    !('Notification' in window) ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window)
+  ) {
+    state.notifications = 'unsupported';
+    renderNotifications();
+    return;
+  }
+
+  try {
+    const data = await api('/api/notifications/key', { redirectOn401: false });
+
+    if (!data?.enabled || !data?.publicKey) {
+      state.notifications = 'unavailable';
+      renderNotifications();
+      return;
+    }
+
+    state.pushPublicKey = data.publicKey;
+
+    if (Notification.permission === 'denied') {
+      state.notifications = 'denied';
+    } else {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
+      state.notifications =
+        subscription && Notification.permission === 'granted' ? 'subscribed' : 'idle';
+    }
+  } catch (error) {
+    console.warn('[logtwo] Não foi possível consultar o status das notificações.', error);
+    state.notifications = 'unavailable';
+  }
+
+  renderNotifications();
+}
+
+async function enableNotifications() {
+  if (state.pushBusy || !state.pushPublicKey) return;
+  if (state.notifications === 'subscribed' || state.notifications === 'denied') return;
+
+  state.pushBusy = true;
+  renderNotifications();
+
+  try {
+    const permission = await Notification.requestPermission();
+
+    if (permission !== 'granted') {
+      state.notifications = permission === 'denied' ? 'denied' : 'idle';
+      toast('Permissão de notificação não concedida.', 'error');
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(state.pushPublicKey),
+      });
+    }
+
+    await api('/api/notifications/subscribe', {
+      method: 'POST',
+      body: { subscription: subscription.toJSON() },
+    });
+
+    state.notifications = 'subscribed';
+    toast('Notificações ativadas.');
+  } catch (error) {
+    console.error('[logtwo] Falha ao ativar notificações.', error);
+    toast('Não foi possível ativar as notificações.', 'error');
+  } finally {
+    state.pushBusy = false;
+    renderNotifications();
+  }
 }
 
 function profileDisplayUser() {
@@ -970,6 +1249,8 @@ function renderProfile() {
   els.favoritesGrid.innerHTML = Array.from({ length: MAX_FAVORITES }, (_, index) =>
     renderFavoriteSlot(safeFavorites[index], { editable: isSelf }),
   ).join('');
+
+  renderNotifications();
 }
 
 function renderTabs() {
@@ -1033,6 +1314,8 @@ function renderAll() {
   renderSidebar();
   renderShelf();
   renderWatchlist();
+  renderUpcoming();
+  renderTimeline();
   renderProfile();
   renderTabs();
 }
@@ -1053,7 +1336,7 @@ function applyDashboardData(data) {
 }
 
 async function loadDashboard() {
-  const [data, recommendationsData, profileData] = await Promise.all([
+  const [data, recommendationsData, profileData, timelineData, upcomingData] = await Promise.all([
     api('/api/diary'),
     api('/api/recommendations').catch((error) => {
       console.error('[logtwo] Não foi possível carregar as indicações.', error);
@@ -1063,6 +1346,16 @@ async function loadDashboard() {
       console.error('[logtwo] Não foi possível carregar o perfil.', error);
       return null;
     }),
+    api('/api/timeline').catch((error) => {
+      console.error('[logtwo] Não foi possível carregar a timeline.', error);
+      return null;
+    }),
+    state.upcomingLoaded
+      ? Promise.resolve(null)
+      : api('/api/movies/upcoming').catch((error) => {
+          console.error('[logtwo] Não foi possível carregar os lançamentos.', error);
+          return null;
+        }),
   ]);
 
   if (!data?.diary) {
@@ -1078,6 +1371,15 @@ async function loadDashboard() {
 
   if (Array.isArray(profileData?.favorites)) {
     state.favorites = profileData.favorites;
+  }
+
+  if (Array.isArray(timelineData?.events)) {
+    state.timeline = timelineData.events;
+  }
+
+  if (upcomingData) {
+    state.upcoming = Array.isArray(upcomingData.movies) ? upcomingData.movies : [];
+    state.upcomingLoaded = true;
   }
 
   if (profileData?.user) {
@@ -1377,6 +1679,18 @@ on(els.watchlistGrid, 'click', (event) => {
   const card = event.target.closest('[data-movie-id]');
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
+
+on(els.upcomingGrid, 'click', (event) => {
+  const card = event.target.closest('[data-movie-id]');
+  if (card) openMovie(Number(card.dataset.movieId), card);
+});
+
+on(els.timelineList, 'click', (event) => {
+  const target = event.target.closest('[data-movie-id]');
+  if (target) openMovie(Number(target.dataset.movieId), target);
+});
+
+on(els.notificationsButton, 'click', enableNotifications);
 
 on(els.favoritesGrid, 'click', (event) => {
   const remove = event.target.closest('[data-remove-favorite]');
@@ -1944,6 +2258,7 @@ async function toggleFavorite() {
 
     renderProfile();
     renderTabs();
+    await refreshTimeline();
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -2547,6 +2862,13 @@ async function boot() {
     }
 
     hideBootScreen();
+    setupNotifications();
+
+    navigator.serviceWorker?.addEventListener('message', (event) => {
+      if (event.data?.type === 'notification-click') {
+        setActiveTab('timeline', { push: true });
+      }
+    });
   } catch (error) {
     if (error?.status === 409) {
       window.location.replace('/connect.html');

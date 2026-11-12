@@ -61,4 +61,15 @@ export const config = {
     secure: isProduction,
   },
   tmdbLanguage: process.env.TMDB_LANGUAGE || 'pt-BR',
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.VAPID_PRIVATE_KEY || '',
+    subject: process.env.VAPID_SUBJECT || 'mailto:contato@logtwo.app',
+  },
 };
+
+if (!config.vapid.publicKey || !config.vapid.privateKey) {
+  console.warn(
+    '[logtwo] Web Push desativado: defina VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY (npx web-push generate-vapid-keys).',
+  );
+}

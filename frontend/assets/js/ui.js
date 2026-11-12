@@ -58,6 +58,42 @@ export function formatSince(isoDate) {
   return formatted.replace('.', '');
 }
 
+export function formatRelativeTime(isoDate) {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diff = date.getTime() - Date.now();
+  const abs = Math.abs(diff);
+  const formatter = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+
+  const units = [
+    ['year', 365 * 24 * 60 * 60 * 1000],
+    ['month', 30 * 24 * 60 * 60 * 1000],
+    ['week', 7 * 24 * 60 * 60 * 1000],
+    ['day', 24 * 60 * 60 * 1000],
+    ['hour', 60 * 60 * 1000],
+    ['minute', 60 * 1000],
+  ];
+
+  for (const [unit, ms] of units) {
+    if (abs >= ms) return formatter.format(Math.round(diff / ms), unit);
+  }
+
+  return 'agora mesmo';
+}
+
+export function daysUntil(isoDate) {
+  if (!isoDate) return null;
+
+  const target = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+}
+
 export function debounce(fn, wait = 350) {
   let timer = null;
 

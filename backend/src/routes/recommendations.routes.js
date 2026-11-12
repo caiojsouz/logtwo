@@ -3,6 +3,7 @@ import { all, one, run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
+import { recordActivity } from '../services/activity.js';
 import { ensureMovie, serializeMovie } from '../services/movies.js';
 
 const router = express.Router();
@@ -76,7 +77,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.body?.movieId);
 
-    await ensureMovie(movieId);
+    const movie = await ensureMovie(movieId);
 
     try {
       await run(
@@ -92,6 +93,15 @@ router.post(
     }
 
     const row = await findRecommendation(req.diary.id, movieId);
+
+    await recordActivity({
+      diary: req.diary,
+      userId: req.user.id,
+      actionType: 'added',
+      movieTitle: movie.title,
+      movieId,
+    });
+
     res.status(201).json({ recommendation: serializeRecommendation(row) });
   }),
 );

@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
 import { profileLimiter } from '../middleware/rateLimits.js';
 import { avatarUpload, detectImageMime, MAX_AVATAR_BYTES } from '../middleware/upload.js';
+import { recordActivity } from '../services/activity.js';
 import { ensureMovie, serializeMovie } from '../services/movies.js';
 
 const router = express.Router();
@@ -233,6 +234,7 @@ router.get(
 
 router.post(
   '/favorites',
+  requireActiveDiary,
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.body?.movieId);
     const total = await one(
@@ -264,6 +266,14 @@ router.post(
 
       throw error;
     }
+
+    await recordActivity({
+      diary: req.diary,
+      userId: req.user.id,
+      actionType: 'favorited',
+      movieTitle: movie.title,
+      movieId,
+    });
 
     res.status(201).json({
       favorite: serializeMovie(movie),

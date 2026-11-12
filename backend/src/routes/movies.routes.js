@@ -1,13 +1,14 @@
 import express from 'express';
-import { one, run } from '../db/index.js';
+import { all, one, run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import { serializeReview } from '../lib/serializers.js';
-import { searchMovies } from '../lib/tmdb.js';
+import { getUpcomingMovies, searchMovies } from '../lib/tmdb.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
 import { searchLimiter } from '../middleware/rateLimits.js';
+import { recordActivity } from '../services/activity.js';
 import { getDiaryReviews } from '../services/diaries.js';
-import { ensureMovie, getDiaryMovieIds, serializeMovie } from '../services/movies.js';
+import { ensureMovie, getDiaryMovieIds, saveMovie, serializeMovie } from '../services/movies.js';
 
 const router = express.Router();
 
@@ -49,6 +50,39 @@ router.get(
 
     res.json({
       results: results.map((movie) => ({ ...movie, inDiary: inDiary.has(movie.tmdbId) })),
+    });
+  }),
+);
+
+router.get(
+  '/upcoming',
+  asyncHandler(async (req, res) => {
+    const rows = await all(
+      `SELECT * FROM movies
+        WHERE release_date IS NOT NULL
+          AND release_date > date('now')
+        ORDER BY release_date ASC
+        LIMIT 24`,
+    );
+
+    if (rows.length > 0) {
+      res.json({ movies: rows.map((row) => serializeMovie(row)), source: 'diary' });
+      return;
+    }
+
+    // A base da dupla ainda não tem lançamentos futuros: preenche com o calendário do TMDB.
+    let upcoming = [];
+
+    try {
+      upcoming = await getUpcomingMovies();
+      await Promise.all(upcoming.map((movie) => saveMovie(movie)));
+    } catch (error) {
+      console.warn('[logtwo] Não foi possível carregar os lançamentos do TMDB:', error?.message);
+    }
+
+    res.json({
+      movies: upcoming.filter((movie) => movie.releaseDate),
+      source: 'tmdb',
     });
   }),
 );
@@ -117,6 +151,14 @@ router.put(
         WHERE diary_id = ? AND movie_id = ? AND user_id = ?`,
       [req.diary.id, movieId, req.user.id],
     );
+
+    await recordActivity({
+      diary: req.diary,
+      userId: req.user.id,
+      actionType: 'rated',
+      movieTitle: movie.title,
+      movieId,
+    });
 
     res.json({
       review: serializeReview(review),

@@ -11,8 +11,10 @@ import { AppError, asyncHandler } from './lib/errors.js';
 import authRoutes from './routes/auth.routes.js';
 import diaryRoutes from './routes/diary.routes.js';
 import moviesRoutes from './routes/movies.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import profileRoutes from './routes/profile.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
+import timelineRoutes from './routes/timeline.routes.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(currentDir, '..', '..', 'frontend');
@@ -76,6 +78,8 @@ export function createApp() {
   app.use('/api/movies', moviesRoutes);
   app.use('/api/recommendations', recommendationsRoutes);
   app.use('/api/profile', profileRoutes);
+  app.use('/api/timeline', timelineRoutes);
+  app.use('/api/notifications', notificationsRoutes);
 
   if (hasFrontend) {
     app.use(express.static(frontendDir, { extensions: ['html'] }));

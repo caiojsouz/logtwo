@@ -82,6 +82,30 @@ export async function searchMovies(query) {
     .slice(0, 12);
 }
 
+export async function getUpcomingMovies() {
+  const data = await request('/movie/upcoming', {
+    language: config.tmdbLanguage,
+    region: 'BR',
+    page: 1,
+  });
+
+  return (data.results || [])
+    .map((movie) => ({
+      tmdbId: movie.id,
+      title: movie.title || movie.original_title || 'Sem título',
+      originalTitle: movie.original_title || null,
+      posterPath: movie.poster_path || null,
+      backdropPath: movie.backdrop_path || null,
+      releaseDate: movie.release_date || null,
+      runtime: null,
+      overview: movie.overview || '',
+      genres: [],
+      voteAverage: typeof movie.vote_average === 'number' ? movie.vote_average : null,
+    }))
+    .filter((movie) => movie.title && movie.releaseDate)
+    .slice(0, 24);
+}
+
 export async function getMovieDetails(tmdbId) {
   const data = await request(`/movie/${tmdbId}`, { language: config.tmdbLanguage });
 
