@@ -54,6 +54,7 @@ const state = {
   notifications: 'unknown',
   pushPublicKey: '',
   pushBusy: false,
+  interestBusy: null,
 };
 
 const MAX_FAVORITES = 4;
@@ -192,6 +193,11 @@ const FILM_ICON = `
 
 const BOOKMARK_ICON = `
   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+    <path d="M6 4h12v17l-6-4-6 4V4z"></path>
+  </svg>`;
+
+const INTEREST_ICON = `
+  <svg class="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path d="M6 4h12v17l-6-4-6 4V4z"></path>
   </svg>`;
 
@@ -576,6 +582,8 @@ function renderUpcomingCard(movie, index) {
   const countdown = upcomingCountdown(movie);
   const meta = [countdown, movie.year].filter(Boolean).join(' · ');
   const date = formatShortDate(movie.releaseDate);
+  const interested = Boolean(movie.interested);
+  const busy = state.interestBusy === movie.tmdbId;
 
   return `
     <article class="card-enter group relative" style="animation-delay:${delay}ms">
@@ -604,6 +612,22 @@ function renderUpcomingCard(movie, index) {
           </p>
         </div>
       </button>
+
+      <button
+        type="button"
+        data-interest-id="${movie.tmdbId}"
+        aria-pressed="${interested}"
+        title="${interested ? 'Remover da sua lista de interesse' : 'Marcar que você pretende assistir'}"
+        ${busy ? 'disabled' : ''}
+        class="mt-2 flex w-full items-center justify-center gap-1 rounded-full border px-1.5 py-1.5 text-[7px] font-semibold uppercase tracking-[0.04em] transition disabled:cursor-wait disabled:opacity-60 sm:px-2 sm:text-[9px] sm:tracking-[0.08em] ${
+          interested
+            ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/15'
+            : 'border-panel/30 bg-zinc-800/70 text-zinc-100 hover:border-panel/60 hover:bg-zinc-700'
+        }"
+      >
+        ${INTEREST_ICON}
+        <span class="truncate">${interested ? 'Na lista ✓' : 'Pretendo assistir'}</span>
+      </button>
     </article>`;
 }
 
@@ -628,6 +652,7 @@ const TIMELINE_COPY = {
   added: { verb: 'adicionou', suffix: 'às indicações' },
   rated: { verb: 'avaliou', suffix: 'na estante' },
   favorited: { verb: 'favoritou', suffix: 'no perfil' },
+  interested: { verb: 'marcou interesse em', suffix: '' },
 };
 
 function renderTimelineItem(event, index) {
@@ -1302,6 +1327,16 @@ function setActiveTab(tab, { push = false, animate = true } = {}) {
     window.history.pushState({ tab: next }, '', TAB_HASH[next]);
   }
 
+  const activePanel = document.querySelector(`[data-panel="${next}"]`);
+
+  if (activePanel && animate) {
+    // O header é sticky: desconta a altura dele para o painel não ficar coberto.
+    const header = document.querySelector('#dashboard-tabs')?.closest('header');
+    activePanel.style.scrollMarginTop = `${(header?.offsetHeight ?? 0) + 16}px`;
+    activePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
   const main = document.querySelector('main');
   main?.scrollTo({ top: 0, behavior: 'auto' });
 
@@ -1681,6 +1716,13 @@ on(els.watchlistGrid, 'click', (event) => {
 });
 
 on(els.upcomingGrid, 'click', (event) => {
+  const interest = event.target.closest('[data-interest-id]');
+
+  if (interest) {
+    toggleInterest(Number(interest.dataset.interestId));
+    return;
+  }
+
   const card = event.target.closest('[data-movie-id]');
   if (card) openMovie(Number(card.dataset.movieId), card);
 });
@@ -1832,6 +1874,10 @@ function modalActionsMarkup() {
       : 'Salvar nos seus favoritos';
   const favDisabled = busy || favoriteFull;
 
+  const upcomingRelease = (daysUntil(movie.releaseDate) ?? 0) > 0;
+  const interested = Boolean(movie.interested);
+  const interestDisabled = busy || state.interestBusy === movie.tmdbId;
+
   const base =
     'inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-40';
   const neutral = 'border-panel/35 text-zinc-300 hover:border-accent/40 hover:text-zinc-100';
@@ -1861,6 +1907,22 @@ function modalActionsMarkup() {
       ${starSvg('h-3.5 w-3.5')}
       ${escapeHtml(favLabel)}
     </button>
+
+    ${
+      upcomingRelease
+        ? `<button
+             type="button"
+             data-action-interest
+             aria-pressed="${interested}"
+             title="${interested ? 'Remover da sua lista de interesse' : 'Marcar que você pretende assistir'}"
+             ${interestDisabled ? 'disabled' : ''}
+             class="${base} ${interested ? selected : neutral}"
+           >
+             ${BOOKMARK_ICON}
+             ${escapeHtml(interested ? 'Na lista ✓' : 'Pretendo assistir')}
+           </button>`
+        : ''
+    }
 
     ${
       favoriteFull
@@ -2677,6 +2739,47 @@ async function selectSongResult(index) {
   }
 }
 
+async function toggleInterest(movieId) {
+  if (!movieId || state.actionBusy || state.interestBusy) return;
+
+  const upcomingMovie = state.upcoming.find((movie) => movie.tmdbId === movieId);
+  const current = upcomingMovie
+    ? Boolean(upcomingMovie.interested)
+    : Boolean(state.activeMovie?.interested);
+
+  state.interestBusy = movieId;
+  renderUpcoming();
+  updateModalActions();
+
+  try {
+    const data = await api(`/api/movies/${movieId}/interest`, {
+      method: current ? 'DELETE' : 'POST',
+    });
+    const interested = Boolean(data?.interested);
+
+    for (const movie of state.upcoming) {
+      if (movie.tmdbId === movieId) movie.interested = interested;
+    }
+
+    if (state.activeMovie?.tmdbId === movieId) {
+      state.activeMovie.interested = interested;
+    }
+
+    toast(
+      interested
+        ? 'Marcado como “pretendo assistir”.'
+        : 'Interesse removido da sua lista.',
+    );
+    await refreshTimeline();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.interestBusy = null;
+    renderUpcoming();
+    if (state.activeMovie?.tmdbId === movieId) updateModalActions();
+  }
+}
+
 function openMovie(movieId, trigger = document.activeElement) {
   state.modalTrigger = trigger;
   state.activeMovie = null;
@@ -2750,6 +2853,11 @@ els.modal.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-action-favorite]')) {
     toggleFavorite();
+    return;
+  }
+
+  if (event.target.closest('[data-action-interest]')) {
+    toggleInterest(state.activeMovie?.tmdbId);
     return;
   }
 

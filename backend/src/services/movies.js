@@ -45,6 +45,21 @@ function isFresh(row) {
 }
 
 /**
+ * O feed /movie/upcoming usa a data regional (BR), enquanto /movie/{id} devolve
+ * a data primária — que pode já ter passado. Não regride uma estreia futura,
+ * senão o título some da aba Em Breve depois de abrir a ficha.
+ */
+function mergeReleaseDate(previous, next) {
+  if (!next) return previous ?? null;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (previous && previous > today && next <= today) return previous;
+
+  return next;
+}
+
+/**
  * Retorna o cache local. Se estiver ausente, velho ou sem runtime, busca no TMDB.
  * Se o TMDB falhar e já houver cache, o cache é usado como fallback.
  */
@@ -56,7 +71,10 @@ export async function ensureMovie(tmdbId) {
 
   try {
     const details = await getMovieDetails(tmdbId);
-    await saveMovie(details);
+    await saveMovie({
+      ...details,
+      releaseDate: mergeReleaseDate(cached?.release_date, details.releaseDate),
+    });
     return (await getMovieRow(tmdbId)) ?? cached;
   } catch (error) {
     if (cached) return cached;

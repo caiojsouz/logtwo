@@ -54,36 +54,48 @@ router.get(
   }),
 );
 
+function selectUpcoming(userId) {
+  return all(
+    `SELECT m.*, CASE WHEN wi.id IS NULL THEN 0 ELSE 1 END AS interested
+       FROM movies m
+  LEFT JOIN watchlist_interests wi
+         ON wi.movie_id = m.tmdb_id AND wi.user_id = ?
+      WHERE m.release_date IS NOT NULL
+        AND m.release_date > date('now')
+   ORDER BY m.release_date ASC
+      LIMIT 24`,
+    [userId],
+  );
+}
+
+function serializeUpcoming(rows) {
+  return rows.map((row) => ({ ...serializeMovie(row), interested: Boolean(row.interested) }));
+}
+
 router.get(
   '/upcoming',
   asyncHandler(async (req, res) => {
-    const rows = await all(
-      `SELECT * FROM movies
-        WHERE release_date IS NOT NULL
-          AND release_date > date('now')
-        ORDER BY release_date ASC
-        LIMIT 24`,
-    );
+    const rows = await selectUpcoming(req.user.id);
 
     if (rows.length > 0) {
-      res.json({ movies: rows.map((row) => serializeMovie(row)), source: 'diary' });
+      res.json({ movies: serializeUpcoming(rows), source: 'diary' });
       return;
     }
 
     // A base da dupla ainda não tem lançamentos futuros: preenche com o calendário do TMDB.
-    let upcoming = [];
+    let source = 'diary';
 
     try {
-      upcoming = await getUpcomingMovies();
+      const upcoming = await getUpcomingMovies();
       await Promise.all(upcoming.map((movie) => saveMovie(movie)));
+      source = 'tmdb';
     } catch (error) {
       console.warn('[logtwo] Não foi possível carregar os lançamentos do TMDB:', error?.message);
     }
 
-    res.json({
-      movies: upcoming.filter((movie) => movie.releaseDate),
-      source: 'tmdb',
-    });
+    const savedRows = source === 'tmdb' ? await selectUpcoming(req.user.id) : [];
+
+    res.json({ movies: serializeUpcoming(savedRows), source });
   }),
 );
 
@@ -92,9 +104,59 @@ router.get(
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.params.id);
     const row = await ensureMovie(movieId);
-    const reviews = await getDiaryReviews(req.diary.id, movieId);
+    const [reviews, interest] = await Promise.all([
+      getDiaryReviews(req.diary.id, movieId),
+      one('SELECT id FROM watchlist_interests WHERE user_id = ? AND movie_id = ?', [
+        req.user.id,
+        movieId,
+      ]),
+    ]);
 
-    res.json({ movie: serializeMovie(row, reviews.map(serializeReview)) });
+    res.json({
+      movie: {
+        ...serializeMovie(row, reviews.map(serializeReview)),
+        interested: Boolean(interest),
+      },
+    });
+  }),
+);
+
+router.post(
+  '/:id/interest',
+  asyncHandler(async (req, res) => {
+    const movieId = parseMovieId(req.params.id);
+    const movie = await ensureMovie(movieId);
+    const result = await run(
+      `INSERT INTO watchlist_interests (user_id, movie_id)
+       VALUES (?, ?)
+       ON CONFLICT (user_id, movie_id) DO NOTHING`,
+      [req.user.id, movieId],
+    );
+
+    if (result.rowsAffected > 0) {
+      await recordActivity({
+        diary: req.diary,
+        userId: req.user.id,
+        actionType: 'interested',
+        movieTitle: movie.title,
+        movieId,
+      });
+    }
+
+    res.status(201).json({ interested: true, movieId });
+  }),
+);
+
+router.delete(
+  '/:id/interest',
+  asyncHandler(async (req, res) => {
+    const movieId = parseMovieId(req.params.id);
+    const result = await run(
+      'DELETE FROM watchlist_interests WHERE user_id = ? AND movie_id = ?',
+      [req.user.id, movieId],
+    );
+
+    res.json({ interested: false, movieId, removed: result.rowsAffected > 0 });
   }),
 );
 

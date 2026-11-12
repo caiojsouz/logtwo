@@ -87,6 +87,19 @@ CREATE TABLE IF NOT EXISTS favorite_movies (
 
 CREATE INDEX IF NOT EXISTS idx_favorite_movies_user ON favorite_movies(user_id, created_at);
 
+-- Interesse individual em lançamentos futuros (aba Em Breve).
+CREATE TABLE IF NOT EXISTS watchlist_interests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  movie_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  UNIQUE (user_id, movie_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies(tmdb_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_interests_user ON watchlist_interests(user_id, created_at);
+
 CREATE TRIGGER IF NOT EXISTS trg_favorite_movies_limit
 BEFORE INSERT ON favorite_movies
 WHEN (SELECT COUNT(*) FROM favorite_movies WHERE user_id = NEW.user_id) >= 4

@@ -5,6 +5,7 @@ const ACTION_VERBS = {
   added: 'adicionou',
   rated: 'avaliou',
   favorited: 'favoritou',
+  interested: 'marcou interesse em',
 };
 
 function partnerIdOf(diary, userId) {
