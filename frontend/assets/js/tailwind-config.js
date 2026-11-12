@@ -30,11 +30,16 @@ tailwind.config = {
           '0%': { opacity: '0', transform: 'scale(0.97) translateY(10px)' },
           '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
+        stamp: {
+          '0%': { opacity: '0', transform: 'scale(1.8) rotate(-12deg)' },
+          '100%': { opacity: '0.9', transform: 'scale(1) rotate(-12deg)' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
         'fade-in': 'fade-in 0.4s ease-out both',
         'scale-in': 'scale-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both',
+        stamp: 'stamp 0.4s cubic-bezier(0.25, 1, 0.5, 1) both',
       },
     },
   },

@@ -583,6 +583,38 @@ function ratingChip(member, review, index) {
     </div>`;
 }
 
+function passportStampDate(movie) {
+  const timestamps = (movie.reviews || [])
+    .map((review) => Date.parse(review.createdAt))
+    .filter((time) => Number.isFinite(time));
+
+  if (timestamps.length === 0) return null;
+
+  const markedAt = new Date(Math.min(...timestamps));
+  const day = String(markedAt.getDate()).padStart(2, '0');
+  const month = new Intl.DateTimeFormat('pt-BR', { month: 'short' })
+    .format(markedAt)
+    .replace('.', '')
+    .toUpperCase();
+  const year = String(markedAt.getFullYear()).slice(-2);
+
+  return `${day} ${month} ${year}`;
+}
+
+function passportStampMarkup(movie) {
+  const date = passportStampDate(movie);
+  if (!date) return '';
+
+  return `
+    <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-2">
+      <span
+        class="animate-stamp -rotate-12 whitespace-nowrap rounded-md border-[3px] border-zinc-200/80 px-2.5 py-1.5 text-center text-[10px] font-black uppercase leading-none tracking-widest text-zinc-200/90 mix-blend-overlay sm:px-3 sm:text-[11px]"
+      >
+        ${date}
+      </span>
+    </div>`;
+}
+
 function renderMovieCard(movie, index) {
   const reviews = new Map((movie.reviews || []).map((review) => [review.userId, review]));
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
@@ -600,6 +632,7 @@ function renderMovieCard(movie, index) {
         <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10 sm:rounded-2xl">
           ${posterMarkup(movie)}
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/75 via-transparent to-transparent"></div>
+          ${passportStampMarkup(movie)}
           <div class="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-2 items-center justify-center p-3 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
             <span class="rounded-full border border-light/20 bg-base/70 px-3 py-1 text-[8px] uppercase tracking-[0.2em] text-zinc-100 backdrop-blur">
               ver notas
