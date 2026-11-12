@@ -61,6 +61,12 @@ const state = {
   soundtrackResults: [],
   soundtrackAbort: null,
   soundtrackSaving: false,
+  lists: [],
+  listBusy: false,
+  listSaving: false,
+  listPickerOpen: false,
+  activeListId: null,
+  listModalTrigger: null,
 };
 
 const MAX_FAVORITES = 4;
@@ -176,6 +182,13 @@ const els = {
   songSearchResults: document.querySelector('#search-results'),
   profileFavoritesTitle: document.querySelector('#profile-favorites-title'),
   profileFavoritesHint: document.querySelector('#profile-favorites-hint'),
+  profileLists: document.querySelector('#profile-lists'),
+  profileListsTitle: document.querySelector('#profile-lists-title'),
+  profileListsCount: document.querySelector('#profile-lists-count'),
+  profileListsHint: document.querySelector('#profile-lists-hint'),
+  profileListForm: document.querySelector('#profile-list-form'),
+  profileListTitle: document.querySelector('#profile-list-title'),
+  profileListCreate: document.querySelector('#profile-list-create'),
   rouletteButton: document.querySelector('#watchlist-roulette-btn'),
   rouletteModal: document.querySelector('#roulette-modal'),
   roulettePoster: document.querySelector('#roulette-poster'),
@@ -190,6 +203,8 @@ const els = {
   searchPanel: document.querySelector('#search-panel'),
   modal: document.querySelector('#movie-modal'),
   modalContent: document.querySelector('#modal-content'),
+  listModal: document.querySelector('#list-modal'),
+  listModalContent: document.querySelector('#list-modal-content'),
 };
 
 normalizeNavigationMarkup();
@@ -1522,6 +1537,357 @@ function renderProfile() {
   ).join('');
 
   renderNotifications();
+  renderLists();
+}
+
+function listsForUser(userId) {
+  return state.lists.filter((list) => list.userId === userId);
+}
+
+function ownLists() {
+  return state.me ? listsForUser(state.me.id) : [];
+}
+
+function listItemCountText(count) {
+  return `${count} ${count === 1 ? 'título' : 'títulos'}`;
+}
+
+function listPreviewMarkup(list) {
+  const items = Array.isArray(list.items) ? list.items : [];
+
+  return Array.from({ length: 4 }, (_, index) => {
+    const item = items[index];
+
+    if (!item) {
+      return '<span class="aspect-[2/3] rounded-md border border-dashed border-panel/30 bg-panel/[0.06]"></span>';
+    }
+
+    return `
+      <span class="aspect-[2/3] overflow-hidden rounded-md border border-panel/20 bg-panel/15">
+        ${
+          item.posterUrl
+            ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />`
+            : ''
+        }
+      </span>`;
+  }).join('');
+}
+
+function listCardMarkup(list, { editable }) {
+  const items = Array.isArray(list.items) ? list.items : [];
+
+  return `
+    <article class="relative min-w-0 rounded-2xl border border-panel/25 bg-base/30 p-3 transition hover:border-accent/40">
+      <button
+        type="button"
+        data-open-list="${list.id}"
+        aria-label="Abrir a lista ${escapeHtml(list.title)}"
+        class="block w-full text-left"
+      >
+        <span class="grid grid-cols-4 gap-1.5">${listPreviewMarkup(list)}</span>
+        <span class="mt-3 flex items-center justify-between gap-2 ${editable ? 'pr-7' : ''}">
+          <span class="min-w-0">
+            <span class="block truncate text-[13px] font-semibold text-zinc-100">${escapeHtml(list.title)}</span>
+            <span class="mt-0.5 block text-[8px] uppercase tracking-[0.12em] text-zinc-400">
+              ${listItemCountText(items.length)}${editable ? '' : ' · só leitura'}
+            </span>
+          </span>
+        </span>
+      </button>
+      ${
+        editable
+          ? `<button
+               type="button"
+               data-delete-list="${list.id}"
+               aria-label="Excluir a lista ${escapeHtml(list.title)}"
+               title="Excluir lista"
+               class="absolute bottom-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-full border border-light/15 bg-base/70 text-zinc-400 backdrop-blur transition hover:border-danger/40 hover:text-danger"
+             >
+               ${TRASH_ICON}
+             </button>`
+          : ''
+      }
+    </article>`;
+}
+
+function listGroupMarkup(title, lists, editable) {
+  const cards = lists.map((list) => listCardMarkup(list, { editable })).join('');
+
+  return `
+    <div>
+      <div class="flex items-center justify-between gap-3">
+        <p class="micro-label">${escapeHtml(title)}</p>
+        <span class="text-[9px] uppercase tracking-[0.14em] text-zinc-400">
+          ${lists.length} ${lists.length === 1 ? 'lista' : 'listas'}
+        </span>
+      </div>
+      ${
+        lists.length
+          ? `<div class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">${cards}</div>`
+          : `<p class="mt-3 rounded-xl border border-dashed border-panel/30 bg-base/20 px-4 py-6 text-center text-[9px] uppercase tracking-[0.16em] text-zinc-400/70">
+               Nenhuma lista ainda.
+             </p>`
+      }
+    </div>`;
+}
+
+function renderLists() {
+  if (!els.profileLists || !state.me || state.profileLoading) return;
+
+  const isSelf = viewingSelfProfile();
+  const person = profileDisplayUser() || state.me;
+  const first = firstName(person.name || 'perfil');
+  const partnerName =
+    state.partner?.name || state.members.find((member) => member.id !== state.me.id)?.name || 'sua dupla';
+
+  els.profileListsTitle.innerHTML = isSelf
+    ? 'Suas listas<span class="text-accent">.</span>'
+    : `Listas de ${escapeHtml(first)}<span class="text-accent">.</span>`;
+  els.profileListsHint.textContent = isSelf
+    ? 'Cada lista é pessoal: só o dono adiciona e remove títulos. As listas da dupla ficam em modo leitura para você.'
+    : `As listas que ${first} criou. Você pode espiar, mas só ${first} edita.`;
+
+  const visibleCount = isSelf ? state.lists.length : listsForUser(person.id).length;
+  els.profileListsCount.textContent = `${visibleCount} ${visibleCount === 1 ? 'lista' : 'listas'}`;
+
+  if (els.profileListForm) {
+    els.profileListForm.classList.toggle('hidden', !isSelf);
+    els.profileListForm.classList.toggle('flex', isSelf);
+  }
+
+  const groups = isSelf
+    ? [
+        listGroupMarkup(`suas listas · ${firstName(state.me.name)}`, ownLists(), true),
+        listGroupMarkup(
+          `listas de ${firstName(partnerName)}`,
+          state.lists.filter((list) => list.userId !== state.me.id),
+          false,
+        ),
+      ]
+    : [listGroupMarkup(`listas de ${first}`, listsForUser(person.id), false)];
+
+  els.profileLists.innerHTML = groups.join('');
+}
+
+function closeListModal() {
+  state.activeListId = null;
+  els.listModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+
+  const trigger = state.listModalTrigger;
+  state.listModalTrigger = null;
+
+  if (trigger?.isConnected) trigger.focus();
+}
+
+function openListModal(listId, trigger = document.activeElement) {
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list) return;
+
+  state.activeListId = listId;
+  state.listModalTrigger = trigger;
+  els.listModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  renderListModal();
+
+  els.listModal.querySelector('[data-close-list-modal-button]')?.focus();
+}
+
+function renderListModal() {
+  const list = state.lists.find((item) => item.id === state.activeListId);
+
+  if (!list) {
+    closeListModal();
+    return;
+  }
+
+  const items = Array.isArray(list.items) ? list.items : [];
+  const editable = list.userId === state.me.id;
+  const ownerName = list.ownerName || (editable ? state.me.name : 'sua dupla');
+
+  const grid = items.length
+    ? `<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5">
+         ${items
+           .map(
+             (item) => `
+               <article class="relative">
+                 <div class="aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10">
+                   ${
+                     item.posterUrl
+                       ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />`
+                       : `<div class="flex h-full w-full items-center justify-center text-zinc-400/50">${FILM_ICON}</div>`
+                   }
+                 </div>
+                 <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
+                 ${
+                   editable
+                     ? `<button
+                          type="button"
+                          data-remove-list-item="${item.id}"
+                          aria-label="Remover ${escapeHtml(item.title)} da lista"
+                          title="Remover da lista"
+                          ${state.listBusy ? 'disabled' : ''}
+                          class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-light/15 bg-base/80 text-zinc-300 backdrop-blur transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          ${TRASH_ICON}
+                        </button>`
+                     : ''
+                 }
+               </article>`,
+           )
+           .join('')}
+       </div>`
+    : `<div class="px-6 py-14 text-center">
+         <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-panel/30 text-zinc-400">${FILM_ICON}</div>
+         <p class="mt-4 text-sm text-zinc-100">Esta lista ainda está vazia.</p>
+         <p class="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
+           Abra um filme pela busca e use “Salvar em Lista...”.
+         </p>
+       </div>`;
+
+  els.listModalContent.innerHTML = `
+    <div class="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-panel/25 bg-[#0b0d0c]/95 p-5 backdrop-blur sm:p-7">
+      <div class="min-w-0">
+        <p class="micro-label">${editable ? 'sua lista' : `lista de ${escapeHtml(firstName(ownerName))}`}</p>
+        <h2 id="list-modal-title" class="mt-1.5 font-display text-3xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
+          ${escapeHtml(list.title)}
+        </h2>
+        <p class="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
+          ${listItemCountText(items.length)}${editable ? '' : ' · somente leitura'}
+        </p>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        ${
+          editable
+            ? `<button
+                 type="button"
+                 data-delete-list-modal="${list.id}"
+                 ${state.listBusy ? 'disabled' : ''}
+                 class="rounded-full border border-danger/25 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-danger/80 transition hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
+               >
+                 Excluir lista
+               </button>`
+            : ''
+        }
+        <button
+          type="button"
+          data-close-list-modal-button
+          aria-label="Fechar lista"
+          class="flex h-9 w-9 items-center justify-center rounded-full border border-light/15 bg-base/60 text-zinc-100/80 backdrop-blur transition hover:border-accent/40 hover:text-zinc-100"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="p-5 sm:p-7">${grid}</div>`;
+}
+
+async function refreshLists() {
+  try {
+    const data = await api('/api/lists');
+    state.lists = Array.isArray(data?.lists) ? data.lists : [];
+  } catch (error) {
+    console.error('[logtwo] Não foi possível recarregar as listas.', error);
+  }
+
+  renderLists();
+  if (state.activeListId) renderListModal();
+  if (state.listPickerOpen) renderListPicker();
+}
+
+async function createList(event) {
+  event.preventDefault();
+
+  if (!els.profileListTitle || state.listBusy) return;
+
+  const title = els.profileListTitle.value.trim().replace(/\s+/g, ' ');
+
+  if (title.length < 2) {
+    toast('Informe um nome com pelo menos 2 caracteres.', 'error');
+    return;
+  }
+
+  state.listBusy = true;
+  if (els.profileListCreate) els.profileListCreate.disabled = true;
+
+  try {
+    const data = await api('/api/lists', { method: 'POST', body: { title } });
+
+    if (data?.list) {
+      state.lists.push({ ...data.list, items: [] });
+    }
+
+    els.profileListTitle.value = '';
+    renderLists();
+    toast('Lista criada. Abra um filme e use “Salvar em Lista...” para começar.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.listBusy = false;
+    if (els.profileListCreate) els.profileListCreate.disabled = false;
+  }
+}
+
+async function deleteList(listId) {
+  if (state.listBusy || !state.me) return;
+
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list || list.userId !== state.me.id) return;
+
+  const confirmed = window.confirm(
+    `Excluir a lista "${list.title}"? Os títulos salvos nela também serão removidos.`,
+  );
+
+  if (!confirmed) return;
+
+  state.listBusy = true;
+
+  try {
+    await api(`/api/lists/${listId}`, { method: 'DELETE' });
+    state.lists = state.lists.filter((item) => item.id !== listId);
+
+    if (
+      state.activeListId === listId ||
+      (els.listModal && !els.listModal.classList.contains('hidden'))
+    ) {
+      closeListModal();
+    }
+
+    renderLists();
+    if (state.listPickerOpen) renderListPicker();
+    toast('Lista excluída.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.listBusy = false;
+    if (state.activeListId) renderListModal();
+  }
+}
+
+async function removeListItem(itemId) {
+  if (state.listBusy || !state.activeListId) return;
+
+  const list = state.lists.find((item) => item.id === state.activeListId);
+  if (!list || list.userId !== state.me.id) return;
+
+  state.listBusy = true;
+  renderListModal();
+
+  try {
+    await api(`/api/lists/${list.id}/items/${itemId}`, { method: 'DELETE' });
+    list.items = (list.items || []).filter((item) => item.id !== itemId);
+    renderListModal();
+    renderLists();
+    if (state.listPickerOpen) renderListPicker();
+    toast('Título removido da lista.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.listBusy = false;
+    if (state.activeListId) renderListModal();
+  }
 }
 
 function renderTabs() {
@@ -1617,27 +1983,32 @@ function applyDashboardData(data) {
 }
 
 async function loadDashboard() {
-  const [data, recommendationsData, profileData, timelineData, upcomingData] = await Promise.all([
-    api('/api/diary'),
-    api('/api/recommendations').catch((error) => {
-      console.error('[logtwo] Não foi possível carregar as indicações.', error);
-      return null;
-    }),
-    api('/api/profile').catch((error) => {
-      console.error('[logtwo] Não foi possível carregar o perfil.', error);
-      return null;
-    }),
-    api('/api/timeline').catch((error) => {
-      console.error('[logtwo] Não foi possível carregar a timeline.', error);
-      return null;
-    }),
-    state.upcomingLoaded
-      ? Promise.resolve(null)
-      : api('/api/movies/upcoming').catch((error) => {
-          console.error('[logtwo] Não foi possível carregar os lançamentos.', error);
-          return null;
-        }),
-  ]);
+  const [data, recommendationsData, profileData, timelineData, upcomingData, listsData] =
+    await Promise.all([
+      api('/api/diary'),
+      api('/api/recommendations').catch((error) => {
+        console.error('[logtwo] Não foi possível carregar as indicações.', error);
+        return null;
+      }),
+      api('/api/profile').catch((error) => {
+        console.error('[logtwo] Não foi possível carregar o perfil.', error);
+        return null;
+      }),
+      api('/api/timeline').catch((error) => {
+        console.error('[logtwo] Não foi possível carregar a timeline.', error);
+        return null;
+      }),
+      state.upcomingLoaded
+        ? Promise.resolve(null)
+        : api('/api/movies/upcoming').catch((error) => {
+            console.error('[logtwo] Não foi possível carregar os lançamentos.', error);
+            return null;
+          }),
+      api('/api/lists').catch((error) => {
+        console.error('[logtwo] Não foi possível carregar as listas.', error);
+        return null;
+      }),
+    ]);
 
   if (!data?.diary) {
     console.error('[logtwo] /api/diary sem diário na resposta.', data);
@@ -1661,6 +2032,10 @@ async function loadDashboard() {
   if (upcomingData) {
     state.upcoming = Array.isArray(upcomingData.movies) ? upcomingData.movies : [];
     state.upcomingLoaded = true;
+  }
+
+  if (Array.isArray(listsData?.lists)) {
+    state.lists = listsData.lists;
   }
 
   if (profileData?.user) {
@@ -2019,6 +2394,37 @@ on(els.profileViewSelf, 'click', () => {
   if (state.me) openProfileFor(state.me.id);
 });
 
+on(els.profileListForm, 'submit', createList);
+on(els.profileLists, 'click', (event) => {
+  const deleteButton = event.target.closest('[data-delete-list]');
+
+  if (deleteButton) {
+    event.stopPropagation();
+    deleteList(Number(deleteButton.dataset.deleteList));
+    return;
+  }
+
+  const openButton = event.target.closest('[data-open-list]');
+  if (openButton) openListModal(Number(openButton.dataset.openList), openButton);
+});
+
+on(els.listModal, 'click', (event) => {
+  if (event.target.closest('[data-close-list-modal], [data-close-list-modal-button]')) {
+    closeListModal();
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-delete-list-modal]');
+
+  if (deleteButton) {
+    deleteList(Number(deleteButton.dataset.deleteListModal));
+    return;
+  }
+
+  const removeButton = event.target.closest('[data-remove-list-item]');
+  if (removeButton) removeListItem(Number(removeButton.dataset.removeListItem));
+});
+
 on(els.rouletteButton, 'click', openRoulette);
 on(els.rouletteModal, 'click', (event) => {
   if (event.target.closest('[data-close-roulette]')) closeRoulette();
@@ -2188,6 +2594,17 @@ function modalActionsMarkup() {
         : ''
     }
 
+    <button
+      type="button"
+      data-action-list
+      aria-expanded="${state.listPickerOpen}"
+      title="Salvar este título em uma lista sua"
+      class="${base} ${state.listPickerOpen ? selected : neutral}"
+    >
+      ${PLUS_ICON}
+      Salvar em Lista...
+    </button>
+
     ${
       favoriteFull
         ? `<span class="text-[9px] uppercase tracking-[0.12em] text-zinc-400/60">limite de ${MAX_FAVORITES} favoritos</span>`
@@ -2199,6 +2616,112 @@ function updateModalActions() {
   const container = els.modal.querySelector('[data-modal-actions]');
   if (!container) return;
   container.innerHTML = modalActionsMarkup();
+}
+
+function renderListPicker() {
+  const container = els.modal.querySelector('[data-list-picker]');
+  if (!container) return;
+
+  const movie = state.activeMovie;
+  const open = Boolean(state.listPickerOpen && movie);
+
+  container.classList.toggle('hidden', !open);
+
+  if (!open) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const lists = ownLists();
+  const buttons = lists
+    .map((list) => {
+      const items = Array.isArray(list.items) ? list.items : [];
+      const saved = items.some(
+        (item) =>
+          item.tmdbId === movie.tmdbId &&
+          (item.mediaType || 'movie') === (movie.mediaType || 'movie'),
+      );
+
+      return `
+        <button
+          type="button"
+          data-save-to-list="${list.id}"
+          ${saved || state.listSaving ? 'disabled' : ''}
+          class="inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed ${
+            saved
+              ? 'border-accent/40 bg-accent/[0.08] text-accent'
+              : 'border-panel/35 text-zinc-300 hover:border-accent/40 hover:text-zinc-100'
+          }"
+        >
+          <span class="max-w-[180px] truncate">${escapeHtml(list.title)}</span>
+          <span class="text-[8px] tracking-[0.1em] ${saved ? 'text-accent/80' : 'text-zinc-500'}">
+            ${saved ? 'salvo ✓' : items.length}
+          </span>
+        </button>`;
+    })
+    .join('');
+
+  container.innerHTML = `
+    <div class="rounded-2xl border border-panel/25 bg-base/40 p-3">
+      <div class="flex items-center justify-between gap-3">
+        <p class="micro-label">salvar em lista</p>
+        <button
+          type="button"
+          data-close-list-picker
+          class="rounded-full border border-panel/35 px-2.5 py-1 text-[8px] uppercase tracking-[0.1em] text-zinc-400 transition hover:border-accent/40 hover:text-zinc-100"
+        >
+          fechar
+        </button>
+      </div>
+      ${
+        lists.length
+          ? `<div class="mt-2.5 flex flex-wrap gap-2">${buttons}</div>`
+          : `<p class="mt-2.5 text-[11px] leading-relaxed text-zinc-400">
+               Você ainda não tem listas. Crie uma na aba Perfil para guardar títulos aqui.
+             </p>`
+      }
+      <p class="mt-3 text-[8px] uppercase tracking-[0.12em] text-zinc-400/60">
+        listas pessoais · não entram na timeline da dupla
+      </p>
+    </div>`;
+}
+
+function toggleListPicker() {
+  state.listPickerOpen = !state.listPickerOpen;
+  renderListPicker();
+  updateModalActions();
+}
+
+async function saveToList(listId) {
+  const movie = state.activeMovie;
+
+  if (!movie || state.listSaving) return;
+
+  const list = ownLists().find((item) => item.id === listId);
+  if (!list) return;
+
+  state.listSaving = true;
+  renderListPicker();
+
+  try {
+    await api(`/api/lists/${listId}/items`, {
+      method: 'POST',
+      body: {
+        tmdbId: movie.tmdbId,
+        mediaType: movie.mediaType || 'movie',
+        title: movie.title,
+        posterPath: movie.posterPath || null,
+      },
+    });
+
+    await refreshLists();
+    toast(`Salvo em "${list.title}".`);
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.listSaving = false;
+    renderListPicker();
+  }
 }
 
 function soundtrackCurrentMarkup(movie) {
@@ -2629,6 +3152,7 @@ function renderModal() {
       <div class="mt-5 flex flex-wrap items-center gap-2" data-modal-actions>
         ${modalActionsMarkup()}
       </div>
+      <div class="mt-3" data-list-picker></div>
 
       <div class="my-6 h-px bg-panel/25"></div>
 
@@ -2641,6 +3165,8 @@ function renderModal() {
         cada nota é individual — você edita apenas a sua · dados e imagens via TMDB
       </p>
     </div>`;
+
+  renderListPicker();
 }
 
 function paintStars(rating, preview = 0) {
@@ -3300,6 +3826,8 @@ function openMovie(movieId, trigger = document.activeElement) {
   state.soundtrackAbort = null;
   state.soundtrackResults = [];
   state.soundtrackSaving = false;
+  state.listPickerOpen = false;
+  state.listSaving = false;
 
   els.modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -3346,6 +3874,8 @@ function closeModal() {
   state.soundtrackResults = [];
   state.activeMovie = null;
   state.isSaving = false;
+  state.listPickerOpen = false;
+  state.listSaving = false;
 
   els.modal.classList.add('hidden');
   document.body.classList.remove('modal-open');
@@ -3376,6 +3906,25 @@ els.modal.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-action-interest]')) {
     toggleInterest(state.activeMovie?.tmdbId);
+    return;
+  }
+
+  if (event.target.closest('[data-action-list]')) {
+    toggleListPicker();
+    return;
+  }
+
+  if (event.target.closest('[data-close-list-picker]')) {
+    state.listPickerOpen = false;
+    renderListPicker();
+    updateModalActions();
+    return;
+  }
+
+  const saveListButton = event.target.closest('[data-save-to-list]');
+
+  if (saveListButton) {
+    saveToList(Number(saveListButton.dataset.saveToList));
     return;
   }
 
@@ -3458,6 +4007,11 @@ els.modal.addEventListener('keydown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+
+  if (!els.listModal.classList.contains('hidden')) {
+    closeListModal();
+    return;
+  }
 
   if (!els.rouletteModal.classList.contains('hidden')) {
     closeRoulette();

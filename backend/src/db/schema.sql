@@ -140,3 +140,28 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+
+-- Listas pessoais do Perfil. Só o dono edita; a dupla apenas visualiza.
+CREATE TABLE IF NOT EXISTS custom_lists (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_lists_user ON custom_lists(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS list_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  list_id INTEGER NOT NULL,
+  tmdb_id INTEGER NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'movie',
+  title TEXT NOT NULL,
+  poster_path TEXT,
+  added_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  UNIQUE (list_id, tmdb_id, media_type),
+  FOREIGN KEY (list_id) REFERENCES custom_lists(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id, added_at);

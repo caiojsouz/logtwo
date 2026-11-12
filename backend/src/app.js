@@ -10,6 +10,7 @@ import { one } from './db/index.js';
 import { AppError, asyncHandler } from './lib/errors.js';
 import authRoutes from './routes/auth.routes.js';
 import diaryRoutes from './routes/diary.routes.js';
+import listsRoutes from './routes/lists.routes.js';
 import moviesRoutes from './routes/movies.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import profileRoutes from './routes/profile.routes.js';
@@ -75,6 +76,7 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/diary', diaryRoutes);
+  app.use('/api/lists', listsRoutes);
   app.use('/api/movies', moviesRoutes);
   app.use('/api/recommendations', recommendationsRoutes);
   app.use('/api/profile', profileRoutes);

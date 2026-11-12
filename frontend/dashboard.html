@@ -687,6 +687,39 @@
 
                 <div id="favorites-grid" class="mt-5 grid grid-cols-4 gap-2 sm:mt-6 sm:gap-4"></div>
               </section>
+
+              <section class="min-w-0 rounded-3xl border border-panel/25 bg-panel/[0.04] p-5 sm:p-7 xl:col-span-2">
+                <div class="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p class="micro-label">listas</p>
+                    <h2 id="profile-lists-title" class="mt-1 font-display text-2xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
+                      Suas listas<span class="text-accent">.</span>
+                    </h2>
+                  </div>
+                  <p id="profile-lists-count" class="text-[10px] uppercase tracking-[0.16em] text-zinc-400"></p>
+                </div>
+                <p id="profile-lists-hint" class="mt-2 max-w-xl text-[11px] leading-relaxed text-zinc-400"></p>
+
+                <form id="profile-list-form" class="mt-5 hidden flex-col gap-2 sm:flex-row" novalidate>
+                  <input
+                    id="profile-list-title"
+                    type="text"
+                    maxlength="60"
+                    autocomplete="off"
+                    placeholder="Nome da nova lista (ex: Animes do Caio)"
+                    class="min-w-0 flex-1 rounded-xl border border-panel/30 bg-base/50 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-400/40 transition focus:border-accent/60 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    id="profile-list-create"
+                    class="shrink-0 rounded-full bg-accent px-4 py-2.5 text-[11px] font-semibold text-base transition hover:bg-light disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Criar lista
+                  </button>
+                </form>
+
+                <div id="profile-lists" class="mt-6 space-y-7"></div>
+              </section>
             </div>
           </section>
         </main>
@@ -769,6 +802,23 @@
       </div>
     </div>
 
+    <div
+      id="list-modal"
+      class="fixed inset-0 z-[70] hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="list-modal-title"
+    >
+      <div data-close-list-modal class="absolute inset-0 bg-base/90 backdrop-blur-md"></div>
+      <div class="relative flex min-h-full items-center justify-center p-3 sm:p-6">
+        <div
+          class="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[26px] border border-panel/40 bg-[#0b0d0c] shadow-cinema animate-scale-in sm:rounded-[30px]"
+        >
+          <div id="list-modal-content"></div>
+        </div>
+      </div>
+    </div>
+
     <div data-toast-container class="toast-container"></div>
 
     <div data-boot class="boot-screen">
@@ -784,6 +834,6 @@
     </div>
 
     <script src="/assets/js/config.js"></script>
-    <script type="module" src="/assets/js/dashboard.js?v=20261112j"></script>
+    <script type="module" src="/assets/js/dashboard.js?v=20261112k"></script>
   </body>
 </html>
