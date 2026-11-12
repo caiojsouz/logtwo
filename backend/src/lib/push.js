@@ -3,14 +3,29 @@ import { config } from '../config.js';
 import { all, run } from '../db/index.js';
 
 const webpush = webpushModule.default ?? webpushModule;
-const enabled = Boolean(config.vapid.publicKey && config.vapid.privateKey);
+
+// Chaves coladas no painel costumam vir com aspas, espaços ou "=" de padding.
+// O web-push exige base64url sem "=", então normalizamos antes de usar.
+function sanitizeKey(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/=+$/, '');
+}
+
+const publicKeyValue = sanitizeKey(config.vapid.publicKey);
+const privateKeyValue = sanitizeKey(config.vapid.privateKey);
+const subject = String(config.vapid.subject || '').trim() || 'mailto:contato@logtwo.app';
+
+let enabled = Boolean(publicKeyValue && privateKeyValue);
 
 if (enabled) {
-  webpush.setVapidDetails(
-    config.vapid.subject,
-    config.vapid.publicKey,
-    config.vapid.privateKey,
-  );
+  try {
+    webpush.setVapidDetails(subject, publicKeyValue, privateKeyValue);
+  } catch (error) {
+    enabled = false;
+    console.warn('[logtwo] Push desativado:', error?.message || error);
+  }
 }
 
 export function pushEnabled() {
@@ -18,7 +33,7 @@ export function pushEnabled() {
 }
 
 export function publicKey() {
-  return config.vapid.publicKey;
+  return publicKeyValue;
 }
 
 /**
