@@ -422,7 +422,7 @@ function renderMovieCard(movie, index) {
         class="group block w-full text-left"
         aria-label="Abrir ${escapeHtml(movie.title)}"
       >
-        <div class="relative aspect-[2/3] overflow-hidden rounded-2xl border border-panel/25 bg-panel/10">
+        <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10 sm:rounded-2xl">
           ${posterMarkup(movie)}
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/75 via-transparent to-transparent"></div>
           <div class="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-2 items-center justify-center p-3 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
@@ -432,12 +432,12 @@ function renderMovieCard(movie, index) {
           </div>
         </div>
 
-        <div class="mt-3 px-0.5">
-          <h3 class="truncate text-[13px] font-semibold leading-snug text-zinc-100">
+        <div class="mt-2 px-0.5 sm:mt-3">
+          <h3 class="truncate text-[11px] font-semibold leading-snug text-zinc-100 sm:text-[13px]">
             ${escapeHtml(movie.title)}
           </h3>
-          <p class="mt-1 text-[9px] uppercase tracking-[0.14em] text-zinc-400">${escapeHtml(meta)}</p>
-          <div class="mt-2.5 grid grid-cols-2 gap-1.5">
+          <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
+          <div class="mt-2 grid grid-cols-1 gap-1 sm:mt-2.5 sm:grid-cols-2 sm:gap-1.5">
             ${state.members
               .map((member, memberIndex) =>
                 ratingChip(member, reviews.get(member.id), memberIndex),
@@ -481,10 +481,10 @@ function renderWatchlistCard(movie, index) {
         class="group block w-full text-left"
         aria-label="Abrir ${escapeHtml(movie.title)}"
       >
-        <div class="relative aspect-[2/3] overflow-hidden rounded-2xl border border-panel/25 bg-panel/10">
+        <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10 sm:rounded-2xl">
           ${posterMarkup(movie)}
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/75 via-transparent to-transparent"></div>
-          <span class="absolute left-2.5 top-2.5 rounded-full border border-accent/25 bg-base/70 px-2 py-0.5 text-[8px] uppercase tracking-[0.14em] text-accent backdrop-blur">
+          <span class="absolute left-2 top-2 rounded-full border border-accent/25 bg-base/70 px-1.5 py-0.5 text-[7px] uppercase tracking-[0.14em] text-accent backdrop-blur sm:left-2.5 sm:top-2.5 sm:px-2 sm:text-[8px]">
             na fila
           </span>
           <div class="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-2 items-center justify-center p-3 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
@@ -494,17 +494,17 @@ function renderWatchlistCard(movie, index) {
           </div>
         </div>
 
-        <div class="mt-3 px-0.5">
-          <h3 class="truncate text-[13px] font-semibold leading-snug text-zinc-100">
+        <div class="mt-2 px-0.5 sm:mt-3">
+          <h3 class="truncate text-[11px] font-semibold leading-snug text-zinc-100 sm:text-[13px]">
             ${escapeHtml(movie.title)}
           </h3>
-          <p class="mt-1 text-[9px] uppercase tracking-[0.14em] text-zinc-400">${escapeHtml(meta)}</p>
+          <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
         </div>
       </button>
 
       ${cardDeleteButton('data-remove-recommendation', movie, 'das indicações')}
 
-      <p class="mt-2.5 min-w-0 truncate px-0.5 text-[9px] uppercase tracking-[0.12em] text-zinc-400" title="Indicado por ${escapeHtml(recommender)}">
+      <p class="mt-2 min-w-0 truncate px-0.5 text-[8px] uppercase tracking-[0.1em] text-zinc-400 sm:mt-2.5 sm:text-[9px] sm:tracking-[0.12em]" title="Indicado por ${escapeHtml(recommender)}">
         por <span class="text-accent/80">${escapeHtml(firstName(recommender))}</span>${date ? ` · ${escapeHtml(date)}` : ''}
       </p>
     </article>`;
@@ -653,11 +653,11 @@ function renderFavoriteSlot(movie, { editable = true } = {}) {
   if (!movie) {
     if (!editable) {
       return `
-        <div class="flex aspect-[2/3] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-panel/25 bg-panel/[0.02] px-3 text-center">
-          <span class="flex h-9 w-9 items-center justify-center rounded-full border border-panel/25 text-zinc-400/40">
+        <div class="flex aspect-[2/3] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-panel/25 bg-panel/[0.02] px-1.5 text-center sm:gap-3 sm:rounded-2xl sm:px-3">
+          <span class="flex h-6 w-6 items-center justify-center rounded-full border border-panel/25 text-zinc-400/40 sm:h-9 sm:w-9">
             ${FILM_ICON}
           </span>
-          <span class="text-[9px] uppercase tracking-[0.16em] text-zinc-400/40">vaga livre</span>
+          <span class="text-[7px] uppercase tracking-[0.1em] text-zinc-400/40 sm:text-[9px] sm:tracking-[0.16em]">vaga livre</span>
         </div>`;
     }
 
@@ -666,12 +666,12 @@ function renderFavoriteSlot(movie, { editable = true } = {}) {
         type="button"
         data-empty-favorite
         aria-label="Adicionar um filme favorito"
-        class="group flex aspect-[2/3] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-panel/30 bg-panel/[0.03] px-3 text-center transition hover:border-accent/40 hover:bg-accent/[0.04]"
+        class="group flex aspect-[2/3] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-panel/30 bg-panel/[0.03] px-1.5 text-center transition hover:border-accent/40 hover:bg-accent/[0.04] sm:gap-3 sm:rounded-2xl sm:px-3"
       >
-        <span class="flex h-9 w-9 items-center justify-center rounded-full border border-panel/35 text-zinc-400 transition group-hover:border-accent/40 group-hover:text-accent">
+        <span class="flex h-6 w-6 items-center justify-center rounded-full border border-panel/35 text-zinc-400 transition group-hover:border-accent/40 group-hover:text-accent sm:h-9 sm:w-9">
           ${PLUS_ICON}
         </span>
-        <span class="text-[9px] uppercase tracking-[0.16em] text-zinc-400/70">vaga livre</span>
+        <span class="text-[7px] uppercase tracking-[0.1em] text-zinc-400/70 sm:text-[9px] sm:tracking-[0.16em]">vaga livre</span>
       </button>`;
   }
 
@@ -683,14 +683,14 @@ function renderFavoriteSlot(movie, { editable = true } = {}) {
         class="block w-full text-left"
         aria-label="Abrir ${escapeHtml(movie.title)}"
       >
-        <div class="relative aspect-[2/3] overflow-hidden rounded-2xl border border-panel/25 bg-panel/10">
+        <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10 sm:rounded-2xl">
           ${posterMarkup(movie)}
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base/85 via-transparent to-transparent"></div>
-          <div class="pointer-events-none absolute inset-x-0 bottom-0 p-3">
-            <p class="line-clamp-2 text-[11px] font-semibold leading-snug text-zinc-100">
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 p-2 sm:p-3">
+            <p class="line-clamp-2 text-[9px] font-semibold leading-snug text-zinc-100 sm:text-[11px]">
               ${escapeHtml(movie.title)}
             </p>
-            ${movie.year ? `<p class="mt-1 text-[8px] uppercase tracking-[0.14em] text-zinc-400">${escapeHtml(movie.year)}</p>` : ''}
+            ${movie.year ? `<p class="mt-0.5 text-[7px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[8px] sm:tracking-[0.14em]">${escapeHtml(movie.year)}</p>` : ''}
           </div>
         </div>
       </button>
@@ -700,9 +700,9 @@ function renderFavoriteSlot(movie, { editable = true } = {}) {
                type="button"
                data-remove-favorite="${movie.tmdbId}"
                aria-label="Remover ${escapeHtml(movie.title)} dos favoritos"
-               class="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300 opacity-0 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+               class="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-light/15 bg-base/75 text-zinc-300 opacity-100 backdrop-blur transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 sm:right-2 sm:top-2 sm:h-7 sm:w-7 sm:opacity-0 sm:group-hover:opacity-100"
              >
-               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+               <svg class="h-3 w-3 sm:h-3.5 sm:w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                  <path d="M6 6l12 12M18 6 6 18"></path>
                </svg>
              </button>`
@@ -918,8 +918,8 @@ function renderProfile() {
   const first = firstName(displayName);
 
   els.profileAvatar.innerHTML = avatarMarkup(person, {
-    size: 'h-24 w-24 sm:h-28 sm:w-28',
-    textSize: 'text-3xl',
+    size: 'h-20 w-20 sm:h-28 sm:w-28',
+    textSize: 'text-2xl sm:text-3xl',
     tone: 'bg-accent/15 text-accent',
     border: 'border border-panel/40',
   });
