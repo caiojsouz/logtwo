@@ -150,3 +150,81 @@ export async function getMovieDetails(tmdbId) {
     voteAverage: typeof data.vote_average === 'number' ? data.vote_average : null,
   };
 }
+
+const DISCOVER_FILTERS = {
+  em_alta: { path: '/discover/movie', mediaType: 'movie' },
+  anime: {
+    path: '/discover/tv',
+    mediaType: 'tv',
+    withGenres: '16',
+    withOriginalLanguage: 'ja',
+  },
+  terror: { path: '/discover/movie', mediaType: 'movie', withGenres: '27' },
+  romance: { path: '/discover/movie', mediaType: 'movie', withGenres: '10749' },
+  acao: { path: '/discover/movie', mediaType: 'movie', withGenres: '28' },
+  comedia: { path: '/discover/movie', mediaType: 'movie', withGenres: '35' },
+};
+
+const FILTER_ALIASES = {
+  '': 'em_alta',
+  alta: 'em_alta',
+  'em-alta': 'em_alta',
+  popular: 'em_alta',
+  animes: 'anime',
+};
+
+export function normalizeDiscoverFilter(rawValue) {
+  const value = String(rawValue ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_');
+
+  const filter = FILTER_ALIASES[value] || value;
+
+  return DISCOVER_FILTERS[filter] ? filter : null;
+}
+
+/**
+ * Catálogo popular para a vitrine de descoberta das listas.
+ * Cada filtro troca o endpoint e os parâmetros de gênero/idioma no TMDB.
+ */
+export async function discoverTitles(filter) {
+  const entry = DISCOVER_FILTERS[filter];
+
+  if (!entry) {
+    throw new AppError(400, 'Filtro de descoberta inválido.');
+  }
+
+  const data = await request(entry.path, {
+    language: config.tmdbLanguage,
+    sort_by: 'popularity.desc',
+    include_adult: 'false',
+    page: 1,
+    ...(entry.withGenres ? { with_genres: entry.withGenres } : {}),
+    ...(entry.withOriginalLanguage
+      ? { with_original_language: entry.withOriginalLanguage }
+      : {}),
+  });
+
+  return (data.results || [])
+    .map((item) => {
+      const releaseDate = item.release_date || item.first_air_date || null;
+
+      return {
+        tmdbId: item.id,
+        mediaType: entry.mediaType,
+        title: item.title || item.name || item.original_title || item.original_name || null,
+        originalTitle: item.original_title || item.original_name || null,
+        releaseDate,
+        year: releaseDate ? releaseDate.slice(0, 4) : null,
+        posterPath: item.poster_path || null,
+        posterUrl: imageUrl(item.poster_path, 'w342'),
+        overview: item.overview || '',
+        voteAverage: typeof item.vote_average === 'number' ? item.vote_average : null,
+      };
+    })
+    .filter((item) => item.title)
+    .slice(0, 20);
+}

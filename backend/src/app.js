@@ -16,6 +16,7 @@ import notificationsRoutes from './routes/notifications.routes.js';
 import profileRoutes from './routes/profile.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
 import timelineRoutes from './routes/timeline.routes.js';
+import tmdbRoutes from './routes/tmdb.routes.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(currentDir, '..', '..', 'frontend');
@@ -82,6 +83,7 @@ export function createApp() {
   app.use('/api/profile', profileRoutes);
   app.use('/api/timeline', timelineRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/tmdb', tmdbRoutes);
 
   if (hasFrontend) {
     app.use(express.static(frontendDir, { extensions: ['html'] }));

@@ -67,6 +67,16 @@ const state = {
   listPickerOpen: false,
   activeListId: null,
   listModalTrigger: null,
+  discoverListId: null,
+  discoverFilter: 'em_alta',
+  discoverQuery: '',
+  discoverResults: [],
+  discoverError: null,
+  discoverLoading: false,
+  discoverAbort: null,
+  discoverSearchAbort: null,
+  discoverSaving: new Set(),
+  discoverTrigger: null,
 };
 
 const MAX_FAVORITES = 4;
@@ -75,6 +85,14 @@ const ROULETTE_TICK_MS = 100;
 const ROULETTE_DURATION_MS = 3000;
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
 const ITUNES_LIMIT = 5;
+const DISCOVER_FILTERS = [
+  { id: 'em_alta', label: 'Em Alta' },
+  { id: 'anime', label: 'Animes' },
+  { id: 'terror', label: 'Terror' },
+  { id: 'romance', label: 'Romance' },
+  { id: 'acao', label: 'Ação' },
+  { id: 'comedia', label: 'Comédia' },
+];
 const TAB_HASH = {
   watched: '#assistidos',
   watchlist: '#indicacoes',
@@ -205,6 +223,11 @@ const els = {
   modalContent: document.querySelector('#modal-content'),
   listModal: document.querySelector('#list-modal'),
   listModalContent: document.querySelector('#list-modal-content'),
+  discoverModal: document.querySelector('#discover-modal'),
+  discoverListName: document.querySelector('#discover-list-name'),
+  discoverSearch: document.querySelector('#discover-search'),
+  discoverChips: document.querySelector('#discover-chips'),
+  discoverGrid: document.querySelector('#discover-grid'),
 };
 
 normalizeNavigationMarkup();
@@ -228,6 +251,11 @@ const INTEREST_ICON = `
 const PLUS_ICON = `
   <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path d="M12 5v14M5 12h14"></path>
+  </svg>`;
+
+const CHECK_ICON = `
+  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path d="m5 12 5 5L20 7"></path>
   </svg>`;
 
 const TRASH_ICON = `
@@ -1741,8 +1769,23 @@ function renderListModal() {
          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-panel/30 text-zinc-400">${FILM_ICON}</div>
          <p class="mt-4 text-sm text-zinc-100">Esta lista ainda está vazia.</p>
          <p class="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
-           Abra um filme pela busca e use “Salvar em Lista...”.
+           ${
+             editable
+               ? 'Abra a descoberta e monte a sua vitrine com o que estiver a fim de ver.'
+               : 'Quando o dono adicionar títulos, eles aparecem aqui.'
+           }
          </p>
+         ${
+           editable
+             ? `<button
+                  type="button"
+                  data-open-discover="${list.id}"
+                  class="mt-5 rounded-full border border-accent/40 bg-accent/[0.08] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent transition hover:border-accent hover:bg-accent/15"
+                >
+                  Adicionar títulos
+                </button>`
+             : ''
+         }
        </div>`;
 
   els.listModalContent.innerHTML = `
@@ -1757,6 +1800,17 @@ function renderListModal() {
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
+        ${
+          editable
+            ? `<button
+                 type="button"
+                 data-open-discover="${list.id}"
+                 class="rounded-full border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-accent transition hover:border-accent hover:bg-accent/15"
+               >
+                 Adicionar títulos
+               </button>`
+            : ''
+        }
         ${
           editable
             ? `<button
@@ -1888,6 +1942,351 @@ async function removeListItem(itemId) {
     state.listBusy = false;
     if (state.activeListId) renderListModal();
   }
+}
+
+function discoverItemKey(item) {
+  return `${item.mediaType || 'movie'}:${item.tmdbId}`;
+}
+
+function discoverList() {
+  return state.lists.find((list) => list.id === state.discoverListId) || null;
+}
+
+function discoverSavedKeys() {
+  const list = discoverList();
+  return new Set((list?.items || []).map(discoverItemKey));
+}
+
+function renderDiscoverChips() {
+  if (!els.discoverChips) return;
+
+  els.discoverChips.innerHTML = DISCOVER_FILTERS.map((filter) => {
+    const active = state.discoverFilter === filter.id;
+
+    return `
+      <button
+        type="button"
+        data-discover-filter="${filter.id}"
+        aria-pressed="${active}"
+        class="shrink-0 px-4 py-1 rounded-full text-sm font-medium transition-colors ${
+          active ? 'bg-zinc-100 text-zinc-950' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+        }"
+      >
+        ${filter.label}
+      </button>`;
+  }).join('');
+}
+
+function renderDiscoverLoading() {
+  els.discoverGrid.className =
+    'grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5';
+  els.discoverGrid.innerHTML = Array.from(
+    { length: 10 },
+    () => `
+      <div class="animate-pulse">
+        <div class="aspect-[2/3] rounded-xl border border-zinc-800 bg-zinc-900"></div>
+        <div class="mt-2 h-2.5 w-4/5 rounded bg-zinc-800"></div>
+        <div class="mt-1.5 h-2 w-1/2 rounded bg-zinc-800/70"></div>
+      </div>`,
+  ).join('');
+}
+
+function renderDiscoverMessage({ title, detail, retry = false }) {
+  els.discoverGrid.className = 'block';
+  els.discoverGrid.innerHTML = `
+    <div class="px-6 py-14 text-center">
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 text-zinc-500">
+        ${FILM_ICON}
+      </div>
+      <p class="mt-4 text-sm text-zinc-100">${escapeHtml(title)}</p>
+      <p class="mt-1.5 text-[11px] leading-relaxed text-zinc-400">${escapeHtml(detail)}</p>
+      ${
+        retry
+          ? `<button
+               type="button"
+               data-retry-discover
+               class="mt-5 rounded-full border border-zinc-800 px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-100"
+             >
+               Tentar novamente
+             </button>`
+          : ''
+      }
+    </div>`;
+}
+
+function renderDiscoverGrid() {
+  if (!els.discoverGrid) return;
+
+  if (state.discoverLoading) {
+    renderDiscoverLoading();
+    return;
+  }
+
+  if (state.discoverError) {
+    renderDiscoverMessage({
+      title: 'Não foi possível carregar a descoberta.',
+      detail: state.discoverError,
+      retry: true,
+    });
+    return;
+  }
+
+  if (!state.discoverResults.length) {
+    const searching = state.discoverQuery.length >= 2;
+
+    renderDiscoverMessage({
+      title: searching
+        ? `Nenhum título encontrado para “${state.discoverQuery}”.`
+        : 'Nenhum título disponível neste filtro agora.',
+      detail: searching
+        ? 'Tente outro termo ou o nome original.'
+        : 'Escolha outra categoria da descoberta.',
+    });
+    return;
+  }
+
+  const savedKeys = discoverSavedKeys();
+  els.discoverGrid.className =
+    'grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5';
+  els.discoverGrid.innerHTML = state.discoverResults
+    .map((item) => {
+      const key = discoverItemKey(item);
+      const saved = savedKeys.has(key);
+      const saving = state.discoverSaving.has(key);
+      const mediaLabel = item.mediaType === 'tv' ? 'Série' : 'Filme';
+
+      return `
+        <button
+          type="button"
+          data-discover-add="${item.tmdbId}"
+          data-discover-media="${escapeHtml(item.mediaType || 'movie')}"
+          aria-label="${saved ? 'Já está na lista' : 'Adicionar à lista'}: ${escapeHtml(item.title)}"
+          ${saved || saving ? 'disabled' : ''}
+          class="group relative block w-full text-left disabled:cursor-not-allowed"
+        >
+          <div class="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+            ${
+              item.posterUrl
+                ? `<img src="${escapeHtml(item.posterUrl)}" alt="" loading="lazy" decoding="async" class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" />`
+                : `<div class="flex h-full w-full items-center justify-center text-zinc-600">${FILM_ICON}</div>`
+            }
+            <span class="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-zinc-950/5 to-transparent opacity-0 transition group-hover:opacity-100"></span>
+            <span
+              class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border backdrop-blur transition ${
+                saved
+                  ? 'border-accent/40 bg-accent/15 text-accent'
+                  : `border-zinc-700/80 bg-zinc-950/80 text-zinc-200 ${saving ? '' : 'opacity-0 group-hover:opacity-100'}`
+              }"
+            >
+              ${saving ? '<span class="spinner spinner-light !h-3 !w-3"></span>' : saved ? CHECK_ICON : PLUS_ICON}
+            </span>
+          </div>
+          <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
+          <p class="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+            ${item.year ? `${escapeHtml(item.year)} · ` : ''}${mediaLabel}
+          </p>
+        </button>`;
+    })
+    .join('');
+}
+
+async function loadDiscover(filter = state.discoverFilter) {
+  if (!discoverList()) return;
+
+  state.discoverSearchAbort?.abort();
+  state.discoverSearchAbort = null;
+  state.discoverAbort?.abort();
+
+  const controller = new AbortController();
+  state.discoverAbort = controller;
+
+  state.discoverFilter = filter;
+  state.discoverQuery = '';
+  state.discoverResults = [];
+  state.discoverError = null;
+  state.discoverLoading = true;
+
+  renderDiscoverChips();
+  renderDiscoverGrid();
+
+  try {
+    const data = await api(`/api/tmdb/discover?filter=${encodeURIComponent(filter)}`, {
+      signal: controller.signal,
+    });
+
+    if (controller.signal.aborted) return;
+
+    if (!Array.isArray(data?.results)) {
+      console.error('[logtwo] Descoberta sem lista de resultados.', data);
+      state.discoverError = 'O servidor devolveu uma lista inválida. Tente novamente.';
+      return;
+    }
+
+    state.discoverResults = data.results;
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+
+    console.error('[logtwo] Falha na descoberta', error);
+    state.discoverError = error.message;
+  } finally {
+    if (state.discoverAbort === controller) {
+      state.discoverAbort = null;
+      state.discoverLoading = false;
+      renderDiscoverGrid();
+    }
+  }
+}
+
+async function performDiscoverSearch(query) {
+  if (query.length < 2 || !discoverList()) return;
+  if (els.discoverSearch.value.trim() !== query) return;
+
+  state.discoverAbort?.abort();
+  state.discoverAbort = null;
+  state.discoverSearchAbort?.abort();
+
+  const controller = new AbortController();
+  state.discoverSearchAbort = controller;
+
+  state.discoverQuery = query;
+  state.discoverResults = [];
+  state.discoverError = null;
+  state.discoverLoading = true;
+  renderDiscoverGrid();
+
+  try {
+    const data = await api(`/api/movies/search?q=${encodeURIComponent(query)}`, {
+      signal: controller.signal,
+    });
+
+    if (controller.signal.aborted || els.discoverSearch.value.trim() !== query) return;
+
+    if (!Array.isArray(data?.results)) {
+      console.error('[logtwo] Busca da descoberta sem lista de resultados.', data);
+      state.discoverError = 'O servidor devolveu uma busca inválida. Tente novamente.';
+      return;
+    }
+
+    state.discoverResults = data.results.map((movie) => ({
+      ...movie,
+      mediaType: movie.mediaType || 'movie',
+    }));
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+
+    console.error('[logtwo] Falha na busca da descoberta', error);
+    state.discoverError = error.message;
+  } finally {
+    if (state.discoverSearchAbort === controller) {
+      state.discoverSearchAbort = null;
+      state.discoverLoading = false;
+      renderDiscoverGrid();
+    }
+  }
+}
+
+const scheduleDiscoverSearch = debounce((query) => performDiscoverSearch(query), 400);
+
+async function addDiscoverItem(tmdbId, mediaType) {
+  const list = discoverList();
+  if (!list || list.userId !== state.me?.id) return;
+
+  const item = state.discoverResults.find(
+    (result) =>
+      result.tmdbId === tmdbId && (result.mediaType || 'movie') === mediaType,
+  );
+
+  if (!item) return;
+
+  const key = discoverItemKey(item);
+  if (state.discoverSaving.has(key) || discoverSavedKeys().has(key)) return;
+
+  state.discoverSaving.add(key);
+  renderDiscoverGrid();
+
+  try {
+    const data = await api(`/api/lists/${list.id}/items`, {
+      method: 'POST',
+      body: {
+        tmdbId: item.tmdbId,
+        mediaType: item.mediaType || 'movie',
+        title: item.title,
+        posterPath: item.posterPath || null,
+      },
+    });
+
+    list.items = Array.isArray(list.items) ? list.items : [];
+    if (data?.item && !list.items.some((entry) => entry.id === data.item.id)) {
+      list.items.push(data.item);
+    }
+
+    if (els.discoverListName) {
+      els.discoverListName.textContent = `${list.title} · ${listItemCountText(list.items.length)}`;
+    }
+
+    if (state.activeListId === list.id) renderListModal();
+    renderLists();
+    if (state.listPickerOpen) renderListPicker();
+    toast(`Adicionado a “${list.title}”.`);
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.discoverSaving.delete(key);
+    renderDiscoverGrid();
+  }
+}
+
+function openDiscover(listId, trigger = document.activeElement) {
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list || list.userId !== state.me?.id) return;
+
+  state.discoverListId = listId;
+  state.discoverTrigger = trigger;
+  state.discoverFilter = 'em_alta';
+  state.discoverQuery = '';
+  state.discoverResults = [];
+  state.discoverError = null;
+  state.discoverLoading = false;
+  state.discoverSaving.clear();
+
+  if (els.discoverSearch) els.discoverSearch.value = '';
+  if (els.discoverListName) {
+    els.discoverListName.textContent = `${list.title} · ${listItemCountText((list.items || []).length)}`;
+  }
+
+  els.discoverModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+
+  renderDiscoverChips();
+  renderDiscoverGrid();
+  loadDiscover('em_alta');
+
+  els.discoverModal.querySelector('[data-close-discover-button]')?.focus();
+}
+
+function closeDiscover() {
+  state.discoverAbort?.abort();
+  state.discoverSearchAbort?.abort();
+  state.discoverAbort = null;
+  state.discoverSearchAbort = null;
+  state.discoverLoading = false;
+  state.discoverListId = null;
+  state.discoverSaving.clear();
+
+  els.discoverModal.classList.add('hidden');
+
+  const listModalOpen = els.listModal && !els.listModal.classList.contains('hidden');
+  if (!listModalOpen) document.body.classList.remove('modal-open');
+
+  const trigger = state.discoverTrigger;
+  state.discoverTrigger = null;
+
+  if (trigger?.isConnected) {
+    trigger.focus();
+    return;
+  }
+
+  if (listModalOpen) els.listModal.querySelector('[data-close-list-modal-button]')?.focus();
 }
 
 function renderTabs() {
@@ -2414,6 +2813,13 @@ on(els.listModal, 'click', (event) => {
     return;
   }
 
+  const discoverButton = event.target.closest('[data-open-discover]');
+
+  if (discoverButton) {
+    openDiscover(Number(discoverButton.dataset.openDiscover), discoverButton);
+    return;
+  }
+
   const deleteButton = event.target.closest('[data-delete-list-modal]');
 
   if (deleteButton) {
@@ -2423,6 +2829,63 @@ on(els.listModal, 'click', (event) => {
 
   const removeButton = event.target.closest('[data-remove-list-item]');
   if (removeButton) removeListItem(Number(removeButton.dataset.removeListItem));
+});
+
+on(els.discoverModal, 'click', (event) => {
+  if (event.target.closest('[data-close-discover], [data-close-discover-button]')) {
+    closeDiscover();
+    return;
+  }
+
+  const filterButton = event.target.closest('[data-discover-filter]');
+
+  if (filterButton) {
+    if (els.discoverSearch) els.discoverSearch.value = '';
+    loadDiscover(filterButton.dataset.discoverFilter);
+    return;
+  }
+
+  const retryButton = event.target.closest('[data-retry-discover]');
+
+  if (retryButton) {
+    const query = els.discoverSearch.value.trim();
+
+    if (query.length >= 2) performDiscoverSearch(query);
+    else loadDiscover(state.discoverFilter);
+    return;
+  }
+
+  const addButton = event.target.closest('[data-discover-add]');
+
+  if (addButton) {
+    addDiscoverItem(
+      Number(addButton.dataset.discoverAdd),
+      addButton.dataset.discoverMedia || 'movie',
+    );
+  }
+});
+
+on(els.discoverSearch, 'input', () => {
+  const query = els.discoverSearch.value.trim();
+
+  if (query.length < 2) {
+    state.discoverSearchAbort?.abort();
+    state.discoverSearchAbort = null;
+
+    if (state.discoverQuery) loadDiscover(state.discoverFilter);
+    return;
+  }
+
+  if (query === state.discoverQuery) return;
+
+  scheduleDiscoverSearch(query);
+});
+
+on(els.discoverSearch, 'keydown', (event) => {
+  if (event.key !== 'Enter') return;
+
+  event.preventDefault();
+  performDiscoverSearch(els.discoverSearch.value.trim());
 });
 
 on(els.rouletteButton, 'click', openRoulette);
@@ -4007,6 +4470,11 @@ els.modal.addEventListener('keydown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+
+  if (!els.discoverModal.classList.contains('hidden')) {
+    closeDiscover();
+    return;
+  }
 
   if (!els.listModal.classList.contains('hidden')) {
     closeListModal();
