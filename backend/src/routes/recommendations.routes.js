@@ -4,7 +4,7 @@ import { AppError, asyncHandler } from '../lib/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
 import { recordActivity } from '../services/activity.js';
-import { ensureMovie, ensureMovieProviders, serializeMovie } from '../services/movies.js';
+import { ensureMovie, serializeMovie } from '../services/movies.js';
 
 const router = express.Router();
 
@@ -67,8 +67,6 @@ router.get(
         ORDER BY r.created_at DESC, r.id DESC`,
       [req.diary.id],
     );
-
-    await Promise.all(rows.map((row) => ensureMovieProviders(row)));
 
     res.json({ recommendations: rows.map(serializeRecommendation) });
   }),

@@ -181,7 +181,6 @@ const els = {
   roulettePoster: document.querySelector('#roulette-poster'),
   rouletteMovieTitle: document.querySelector('#roulette-movie-title'),
   rouletteMovieMeta: document.querySelector('#roulette-movie-meta'),
-  rouletteProviders: document.querySelector('#roulette-providers'),
   rouletteStatus: document.querySelector('#roulette-status'),
   rouletteFooter: document.querySelector('#roulette-footer'),
   searchWrap: document.querySelector('#search-wrap'),
@@ -251,31 +250,31 @@ function playIcons(size = 'h-3 w-3') {
     </svg>`;
 }
 
-function providersMarkup(providers, { compact = false, hideEmpty = false } = {}) {
+function providersMarkup(providers) {
   const list = Array.isArray(providers) ? providers.filter((item) => item?.logoUrl) : [];
 
   if (list.length === 0) {
-    if (hideEmpty) return '';
-    return `<p class="mt-1.5 truncate text-[7px] leading-relaxed text-zinc-500 sm:text-[8px]" title="Indisponível em streaming BR">Indisponível em streaming BR</p>`;
+    return `<p class="mt-4 text-[10px] leading-relaxed text-zinc-500" title="Indisponível em streaming BR">Indisponível em streaming BR</p>`;
   }
 
-  const limit = compact ? 3 : 6;
-
   return `
-    <div class="mt-1.5 flex flex-wrap items-center gap-1">
-      ${list
-        .slice(0, limit)
-        .map(
-          (provider) => `<img
-            src="${escapeHtml(provider.logoUrl)}"
-            alt="${escapeHtml(provider.name)}"
-            title="${escapeHtml(provider.name)}"
-            loading="lazy"
-            decoding="async"
-            class="h-6 w-6 rounded-md object-contain"
-          />`,
-        )
-        .join('')}
+    <div class="mt-4 flex flex-wrap items-center gap-2.5">
+      <p class="shrink-0 text-[10px] font-semibold tracking-[0.03em] text-zinc-300">Disponível em:</p>
+      <div class="flex flex-wrap items-center gap-2">
+        ${list
+          .slice(0, 8)
+          .map(
+            (provider) => `<img
+              src="${escapeHtml(provider.logoUrl)}"
+              alt="${escapeHtml(provider.name)}"
+              title="${escapeHtml(provider.name)}"
+              loading="lazy"
+              decoding="async"
+              class="h-8 w-8 rounded-md object-contain"
+            />`,
+          )
+          .join('')}
+      </div>
     </div>`;
 }
 
@@ -613,7 +612,6 @@ function renderMovieCard(movie, index) {
             ${escapeHtml(movie.title)}
           </h3>
           <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
-          ${providersMarkup(movie.providers, { compact: true, hideEmpty: true })}
           <div class="mt-2 grid grid-cols-1 gap-1 sm:mt-2.5 sm:grid-cols-2 sm:gap-1.5">
             ${state.members
               .map((member, memberIndex) =>
@@ -678,7 +676,6 @@ function renderWatchlistCard(movie, index) {
             ${escapeHtml(movie.title)}
           </h3>
           <p class="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-zinc-400 sm:mt-1 sm:text-[9px] sm:tracking-[0.14em]">${escapeHtml(meta)}</p>
-          ${providersMarkup(movie.providers, { compact: true })}
         </div>
       </button>
 
@@ -905,10 +902,6 @@ function setRouletteFrame(movie, { final = false } = {}) {
 
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
   els.rouletteMovieMeta.textContent = [movie.year, runtime].filter(Boolean).join(' · ');
-
-  if (els.rouletteProviders) {
-    els.rouletteProviders.innerHTML = `<div class="flex justify-center">${providersMarkup(movie.providers)}</div>`;
-  }
 }
 
 function finishRoulette() {
@@ -2568,10 +2561,7 @@ function renderModal() {
         ${escapeHtml(movie.overview || 'Sem sinopse disponível no TMDB.')}
       </p>
 
-      <div class="mt-4">
-        <p class="micro-label">onde assistir no brasil</p>
-        ${providersMarkup(movie.providers)}
-      </div>
+      ${providersMarkup(movie.providers)}
 
       <div class="mt-5 flex flex-wrap items-center gap-2" data-modal-actions>
         ${modalActionsMarkup()}
