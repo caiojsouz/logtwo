@@ -572,7 +572,8 @@ function upcomingCountdown(movie) {
   const days = daysUntil(movie.releaseDate);
 
   if (days === null) return null;
-  if (days <= 0) return 'estreia';
+  if (days < 0) return 'já estreou';
+  if (days === 0) return 'estreia';
   if (days === 1) return 'estreia amanhã';
   return `faltam ${days} dias`;
 }
@@ -1874,7 +1875,10 @@ function modalActionsMarkup() {
       : 'Salvar nos seus favoritos';
   const favDisabled = busy || favoriteFull;
 
-  const upcomingRelease = (daysUntil(movie.releaseDate) ?? 0) > 0;
+  // Qualquer filme que você ainda não avaliou pode ser guardado em Em Breve,
+  // inclusive títulos cuja data de estreia já passou.
+  const ownReview = movie.reviews?.some((review) => review.userId === state.me.id);
+  const showInterest = !ownReview;
   const interested = Boolean(movie.interested);
   const interestDisabled = busy || state.interestBusy === movie.tmdbId;
 
@@ -1909,7 +1913,7 @@ function modalActionsMarkup() {
     </button>
 
     ${
-      upcomingRelease
+      showInterest
         ? `<button
              type="button"
              data-action-interest

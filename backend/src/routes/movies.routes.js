@@ -54,15 +54,44 @@ router.get(
   }),
 );
 
+const UPCOMING_FEED_TTL_MS = 10 * 60 * 1000;
+let upcomingFeedAt = 0;
+let upcomingFeedPromise = null;
+
+/**
+ * O feed regional do TMDB é a fonte da data de estreia no Brasil. Ressincroniza
+ * em segundo plano para recuperar datas que a ficha possa ter regredido.
+ */
+function refreshUpcomingFeed() {
+  if (upcomingFeedPromise) return upcomingFeedPromise;
+  if (Date.now() - upcomingFeedAt < UPCOMING_FEED_TTL_MS) return Promise.resolve();
+
+  upcomingFeedPromise = (async () => {
+    const upcoming = await getUpcomingMovies();
+    await Promise.all(upcoming.map((movie) => saveMovie(movie)));
+    upcomingFeedAt = Date.now();
+  })()
+    .catch((error) => {
+      // Também marca o TTL para não bater no TMDB a cada requisição quando ele falha.
+      upcomingFeedAt = Date.now();
+      console.warn('[logtwo] Não foi possível atualizar os lançamentos do TMDB:', error?.message);
+    })
+    .finally(() => {
+      upcomingFeedPromise = null;
+    });
+
+  return upcomingFeedPromise;
+}
+
 function selectUpcoming(userId) {
   return all(
     `SELECT m.*, CASE WHEN wi.id IS NULL THEN 0 ELSE 1 END AS interested
        FROM movies m
   LEFT JOIN watchlist_interests wi
          ON wi.movie_id = m.tmdb_id AND wi.user_id = ?
-      WHERE m.release_date IS NOT NULL
-        AND m.release_date > date('now')
-   ORDER BY m.release_date ASC
+      WHERE m.release_date > date('now')
+         OR wi.id IS NOT NULL
+   ORDER BY (m.release_date > date('now')) DESC, m.release_date ASC
       LIMIT 24`,
     [userId],
   );
@@ -75,27 +104,11 @@ function serializeUpcoming(rows) {
 router.get(
   '/upcoming',
   asyncHandler(async (req, res) => {
+    await refreshUpcomingFeed();
+
     const rows = await selectUpcoming(req.user.id);
 
-    if (rows.length > 0) {
-      res.json({ movies: serializeUpcoming(rows), source: 'diary' });
-      return;
-    }
-
-    // A base da dupla ainda não tem lançamentos futuros: preenche com o calendário do TMDB.
-    let source = 'diary';
-
-    try {
-      const upcoming = await getUpcomingMovies();
-      await Promise.all(upcoming.map((movie) => saveMovie(movie)));
-      source = 'tmdb';
-    } catch (error) {
-      console.warn('[logtwo] Não foi possível carregar os lançamentos do TMDB:', error?.message);
-    }
-
-    const savedRows = source === 'tmdb' ? await selectUpcoming(req.user.id) : [];
-
-    res.json({ movies: serializeUpcoming(savedRows), source });
+    res.json({ movies: serializeUpcoming(rows) });
   }),
 );
 
@@ -206,6 +219,12 @@ router.put(
          updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`,
       [req.diary.id, movieId, req.user.id, rating, comment],
     );
+
+    // Já foi assistido: sai do Em Breve para não ficar preso sem botão de remover.
+    await run('DELETE FROM watchlist_interests WHERE user_id = ? AND movie_id = ?', [
+      req.user.id,
+      movieId,
+    ]);
 
     const review = await one(
       `SELECT id, user_id, rating, comment, created_at, updated_at
