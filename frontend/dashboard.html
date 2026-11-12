@@ -20,7 +20,7 @@
     />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/assets/js/tailwind-config.js?v=20261112i"></script>
-    <link rel="stylesheet" href="/assets/css/styles.css?v=20261112a" />
+    <link rel="stylesheet" href="/assets/css/styles.css?v=20261112b" />
   </head>
   <body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased lg:h-screen lg:overflow-hidden">
     <div class="cinema-bg grain relative min-h-screen lg:h-screen">
@@ -198,59 +198,8 @@
               id="dashboard-tabs"
               role="tablist"
               aria-label="Seções do diário"
-              class="mt-4 grid grid-cols-5 gap-1 border-t border-panel/15 pt-3.5 sm:flex sm:items-center sm:gap-1.5 sm:overflow-x-auto lg:mt-5 lg:pt-4"
+              class="mt-4 hidden gap-1 border-t border-panel/15 pt-3.5 lg:mt-5 lg:flex lg:items-center lg:gap-1.5 lg:overflow-x-auto lg:pt-4"
             >
-              <button
-                type="button"
-                id="tab-watched"
-                data-tab="watched"
-                role="tab"
-                aria-selected="true"
-                aria-controls="panel-watched"
-                class="tab-button is-active flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-transparent px-1 py-2 text-[7px] font-semibold uppercase tracking-[0.02em] text-zinc-400 transition hover:text-zinc-100 sm:shrink-0 sm:justify-start sm:gap-2 sm:px-3.5 sm:text-[9px] sm:tracking-[0.16em]"
-              >
-                <svg class="hidden h-3.5 w-3.5 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <rect x="3" y="4" width="18" height="16" rx="2" />
-                  <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
-                </svg>
-                Assistidos
-                <span data-tab-count="watched" class="hidden rounded-full bg-panel/25 px-1.5 py-0.5 text-[8px] font-semibold tracking-normal text-zinc-400 sm:inline-block">0</span>
-              </button>
-
-              <button
-                type="button"
-                id="tab-watchlist"
-                data-tab="watchlist"
-                role="tab"
-                aria-selected="false"
-                aria-controls="panel-watchlist"
-                tabindex="-1"
-                class="tab-button flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-transparent px-1 py-2 text-[7px] font-semibold uppercase tracking-[0.02em] text-zinc-400 transition hover:text-zinc-100 sm:shrink-0 sm:justify-start sm:gap-2 sm:px-3.5 sm:text-[9px] sm:tracking-[0.16em]"
-              >
-                <svg class="hidden h-3.5 w-3.5 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <path d="M6 4h12v17l-6-4-6 4V4z" />
-                </svg>
-                Indicações
-                <span data-tab-count="watchlist" class="hidden rounded-full bg-panel/25 px-1.5 py-0.5 text-[8px] font-semibold tracking-normal text-zinc-400 sm:inline-block">0</span>
-              </button>
-
-              <button
-                type="button"
-                id="tab-upcoming"
-                data-tab="upcoming"
-                role="tab"
-                aria-selected="false"
-                aria-controls="panel-upcoming"
-                tabindex="-1"
-                class="tab-button flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-transparent px-1 py-2 text-[7px] font-semibold uppercase tracking-[0.02em] text-zinc-400 transition hover:text-zinc-100 sm:shrink-0 sm:justify-start sm:gap-2 sm:px-3.5 sm:text-[9px] sm:tracking-[0.16em]"
-              >
-                <svg class="hidden h-3.5 w-3.5 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <rect x="3" y="5" width="18" height="16" rx="2" />
-                  <path d="M8 3v4M16 3v4M3 10h18" />
-                </svg>
-                Em Breve
-              </button>
-
               <button
                 type="button"
                 id="tab-timeline"
@@ -259,12 +208,39 @@
                 aria-selected="false"
                 aria-controls="panel-timeline"
                 tabindex="-1"
-                class="tab-button flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-transparent px-1 py-2 text-[7px] font-semibold uppercase tracking-[0.02em] text-zinc-400 transition hover:text-zinc-100 sm:shrink-0 sm:justify-start sm:gap-2 sm:px-3.5 sm:text-[9px] sm:tracking-[0.16em]"
+                class="tab-button flex min-w-0 items-center justify-start gap-2 rounded-full border border-transparent px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 transition hover:text-zinc-100"
               >
-                <svg class="hidden h-3.5 w-3.5 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <path d="M3 12h3.5l2.5-6 4 12 2.5-6H21" />
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" />
                 </svg>
                 Timeline
+              </button>
+
+              <button
+                type="button"
+                id="tab-shelf"
+                data-tab="shelf"
+                role="tab"
+                aria-selected="true"
+                aria-controls="panel-shelf"
+                class="tab-button is-active flex min-w-0 items-center justify-start gap-2 rounded-full border border-transparent px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-100 transition hover:text-zinc-100"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path d="M5 4v16M10 4v16M15 4v16M3 20h18" />
+                </svg>
+                Estante
+              </button>
+
+              <button
+                type="button"
+                data-nav-action="quick"
+                class="flex min-w-0 items-center justify-start gap-2 rounded-full border border-transparent px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 transition hover:text-zinc-100"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m16.5 16.5 4 4" />
+                </svg>
+                Buscar / Roleta
               </button>
 
               <button
@@ -275,9 +251,9 @@
                 aria-selected="false"
                 aria-controls="panel-profile"
                 tabindex="-1"
-                class="tab-button flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-transparent px-1 py-2 text-[7px] font-semibold uppercase tracking-[0.02em] text-zinc-400 transition hover:text-zinc-100 sm:shrink-0 sm:justify-start sm:gap-2 sm:px-3.5 sm:text-[9px] sm:tracking-[0.16em]"
+                class="tab-button flex min-w-0 items-center justify-start gap-2 rounded-full border border-transparent px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-400 transition hover:text-zinc-100"
               >
-                <svg class="hidden h-3.5 w-3.5 sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                   <circle cx="12" cy="8" r="3.4" />
                   <path d="M5 20c.8-3.7 3.5-5.6 7-5.6s6.2 1.9 7 5.6" />
                 </svg>
@@ -287,12 +263,66 @@
           </header>
 
           <section
-            id="panel-watched"
-            data-panel="watched"
+            id="panel-shelf"
+            data-panel="shelf"
             role="tabpanel"
-            aria-labelledby="tab-watched"
-            class="scroll-mt-4 px-5 pb-16 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
+            aria-labelledby="tab-shelf"
+            class="hidden scroll-mt-4 px-5 pb-28 lg:px-10 lg:pb-20"
           >
+            <nav
+              id="shelf-subnav"
+              role="tablist"
+              aria-label="Seções da estante"
+              class="sticky z-20 -mx-5 mb-6 flex gap-4 border-b border-zinc-800 bg-[#09090b]/95 px-5 pb-2 pt-4 backdrop-blur lg:-mx-10 lg:px-10"
+              style="top: var(--dashboard-header-h, 0px)"
+            >
+              <button
+                type="button"
+                id="shelf-tab-watched"
+                data-shelf-tab="watched"
+                role="tab"
+                aria-selected="true"
+                aria-controls="shelf-panel-watched"
+                class="-mb-2 shrink-0 border-b-2 border-zinc-100 pb-2 text-sm font-bold text-zinc-100 transition"
+              >
+                Assistidos
+                <span data-tab-count="watched" class="ml-1 text-[10px] font-medium text-zinc-400">0</span>
+              </button>
+
+              <button
+                type="button"
+                id="shelf-tab-watchlist"
+                data-shelf-tab="watchlist"
+                role="tab"
+                aria-selected="false"
+                aria-controls="shelf-panel-watchlist"
+                tabindex="-1"
+                class="-mb-2 shrink-0 border-b-2 border-transparent pb-2 text-sm text-zinc-500 transition hover:text-zinc-300"
+              >
+                Indicações
+                <span data-tab-count="watchlist" class="ml-1 text-[10px] font-medium text-zinc-400">0</span>
+              </button>
+
+              <button
+                type="button"
+                id="shelf-tab-upcoming"
+                data-shelf-tab="upcoming"
+                role="tab"
+                aria-selected="false"
+                aria-controls="shelf-panel-upcoming"
+                tabindex="-1"
+                class="-mb-2 shrink-0 border-b-2 border-transparent pb-2 text-sm text-zinc-500 transition hover:text-zinc-300"
+              >
+                Em Breve
+              </button>
+            </nav>
+
+            <div
+              id="shelf-panel-watched"
+              data-shelf-panel="watched"
+              role="tabpanel"
+              aria-labelledby="shelf-tab-watched"
+            >
             <div class="mb-5 flex items-end justify-between gap-4">
               <div>
                 <p class="micro-label">já assistidos</p>
@@ -342,15 +372,15 @@
                 Buscar um filme
               </button>
             </div>
-          </section>
+            </div>
 
-          <section
-            id="panel-watchlist"
-            data-panel="watchlist"
-            role="tabpanel"
-            aria-labelledby="tab-watchlist"
-            class="hidden scroll-mt-4 px-5 pb-16 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
-          >
+            <div
+              id="shelf-panel-watchlist"
+              data-shelf-panel="watchlist"
+              role="tabpanel"
+              aria-labelledby="shelf-tab-watchlist"
+              class="hidden"
+            >
             <div class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p class="micro-label">a fila da dupla</p>
@@ -405,15 +435,15 @@
                 Buscar um filme
               </button>
             </div>
-          </section>
+            </div>
 
-          <section
-            id="panel-upcoming"
-            data-panel="upcoming"
-            role="tabpanel"
-            aria-labelledby="tab-upcoming"
-            class="hidden scroll-mt-4 px-5 pb-16 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
-          >
+            <div
+              id="shelf-panel-upcoming"
+              data-shelf-panel="upcoming"
+              role="tabpanel"
+              aria-labelledby="shelf-tab-upcoming"
+              class="hidden"
+            >
             <div class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p class="micro-label">ainda fora do ar</p>
@@ -448,6 +478,7 @@
                 Nenhum lançamento futuro na base de vocês por enquanto.
               </p>
             </div>
+            </div>
           </section>
 
           <section
@@ -455,7 +486,7 @@
             data-panel="timeline"
             role="tabpanel"
             aria-labelledby="tab-timeline"
-            class="hidden scroll-mt-4 px-5 pb-16 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
+            class="hidden scroll-mt-4 px-5 pb-28 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
           >
             <div class="mx-auto max-w-3xl">
               <div class="mb-6">
@@ -487,7 +518,7 @@
             data-panel="profile"
             role="tabpanel"
             aria-labelledby="tab-profile"
-            class="hidden scroll-mt-4 px-5 pb-16 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
+            class="hidden scroll-mt-4 px-5 pb-28 pt-7 lg:px-10 lg:pb-20 lg:pt-9"
           >
             <p
               id="profile-loading"
@@ -880,6 +911,153 @@
       </div>
     </div>
 
+    <nav
+      id="bottom-nav"
+      aria-label="Navegação principal"
+      class="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 lg:hidden"
+    >
+      <div
+        class="mx-auto flex max-w-sm items-stretch justify-between gap-1 rounded-[28px] border border-white/10 bg-zinc-950/85 px-2 py-1.5 shadow-cinema backdrop-blur-xl"
+      >
+        <button
+          type="button"
+          data-tab="timeline"
+          aria-label="Timeline"
+          aria-current="false"
+          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+        >
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" />
+          </svg>
+          Timeline
+        </button>
+
+        <button
+          type="button"
+          data-tab="shelf"
+          aria-label="Estante"
+          aria-current="page"
+          class="bottom-nav-button is-active flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+        >
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M5 4v16M10 4v16M15 4v16M3 20h18" />
+          </svg>
+          Estante
+        </button>
+
+        <button
+          type="button"
+          data-nav-action="quick"
+          aria-label="Buscar ou sortear"
+          aria-haspopup="dialog"
+          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+        >
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m16.5 16.5 4 4" />
+          </svg>
+          Buscar
+        </button>
+
+        <button
+          type="button"
+          data-tab="profile"
+          aria-label="Perfil"
+          aria-current="false"
+          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+        >
+          <span
+            id="bottom-nav-avatar"
+            aria-hidden="true"
+            class="bottom-nav-avatar flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-panel/40 bg-panel/20 text-zinc-400"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.4" />
+              <path d="M5 20c.8-3.7 3.5-5.6 7-5.6s6.2 1.9 7 5.6" />
+            </svg>
+          </span>
+          Perfil
+        </button>
+      </div>
+    </nav>
+
+    <div
+      id="quick-actions"
+      class="fixed inset-0 z-[70] hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quick-actions-title"
+    >
+      <div data-close-quick class="absolute inset-0 bg-base/85 backdrop-blur-md"></div>
+      <div class="relative flex min-h-full items-end justify-center p-4 pb-28 sm:items-center sm:p-6">
+        <div
+          class="w-full max-w-sm rounded-[26px] border border-panel/40 bg-[#0b0d0c] p-5 shadow-cinema animate-scale-in sm:rounded-[30px]"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <p class="micro-label">próxima sessão</p>
+              <h2
+                id="quick-actions-title"
+                class="mt-1.5 font-display text-2xl leading-none tracking-[-0.02em] text-zinc-100"
+              >
+                Buscar ou sortear<span class="text-accent">.</span>
+              </h2>
+            </div>
+            <button
+              type="button"
+              data-close-quick-button
+              aria-label="Fechar ações"
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-400 transition hover:border-panel/60 hover:text-zinc-100"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mt-5 grid gap-2.5">
+            <button
+              type="button"
+              data-quick-search
+              class="flex items-center gap-3 rounded-2xl border border-panel/30 bg-panel/[0.06] px-4 py-3.5 text-left transition hover:border-accent/40 hover:bg-panel/[0.1]"
+            >
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent/[0.08] text-accent">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m16.5 16.5 4 4" />
+                </svg>
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-zinc-100">Buscar um título</span>
+                <span class="mt-0.5 block text-[10px] leading-relaxed text-zinc-400">
+                  Encontre algo novo no TMDB e registre na hora.
+                </span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              data-quick-roulette
+              disabled
+              class="flex items-center gap-3 rounded-2xl border border-panel/30 bg-panel/[0.06] px-4 py-3.5 text-left transition hover:border-accent/40 hover:bg-panel/[0.1] disabled:cursor-not-allowed disabled:border-panel/20 disabled:bg-transparent"
+            >
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-300">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+                </svg>
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-zinc-100">Sortear o que assistir</span>
+                <span data-quick-roulette-note class="mt-0.5 block text-[10px] leading-relaxed text-zinc-400">
+                  Precisa de pelo menos 2 indicações.
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div data-toast-container class="toast-container"></div>
 
     <div data-boot class="boot-screen">
@@ -895,6 +1073,6 @@
     </div>
 
     <script src="/assets/js/config.js"></script>
-    <script type="module" src="/assets/js/dashboard.js?v=20261112m"></script>
+    <script type="module" src="/assets/js/dashboard.js?v=20261112n"></script>
   </body>
 </html>

@@ -271,6 +271,20 @@ textarea {
   color: var(--logtwo-accent);
 }
 
+.bottom-nav-button.is-active {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f4f4f5;
+}
+
+.bottom-nav-button.is-active svg {
+  color: var(--logtwo-accent);
+}
+
+.bottom-nav-button.is-active .bottom-nav-avatar {
+  border-color: rgba(137, 160, 154, 0.75);
+  box-shadow: 0 0 0 2px rgba(137, 160, 154, 0.18);
+}
+
 [data-panel].hidden {
   display: none !important;
 }

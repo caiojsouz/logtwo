@@ -25,7 +25,8 @@ const state = {
   partner: null,
   watchlist: [],
   favorites: [],
-  activeTab: 'watched',
+  activeTab: 'shelf',
+  shelfTab: 'watched',
   profileUserId: null,
   profileUser: null,
   profileFavorites: [],
@@ -94,33 +95,33 @@ const DISCOVER_FILTERS = [
   { id: 'comedia', label: 'Comédia' },
 ];
 const TAB_HASH = {
-  watched: '#assistidos',
-  watchlist: '#indicacoes',
-  upcoming: '#embreve',
+  shelf: '#estante',
   timeline: '#timeline',
   profile: '#perfil',
 };
 const HASH_TAB = Object.fromEntries(
   Object.entries(TAB_HASH).map(([tab, hash]) => [hash, tab]),
 );
+const LEGACY_TAB_HASH = {
+  '#assistidos': { tab: 'shelf', shelf: 'watched' },
+  '#indicacoes': { tab: 'shelf', shelf: 'watchlist' },
+  '#embreve': { tab: 'shelf', shelf: 'upcoming' },
+};
+const SHELF_TABS = ['watched', 'watchlist', 'upcoming'];
 const TAB_BY_ID = {
-  'tab-watched': 'watched',
-  'tab-watchlist': 'watchlist',
-  'tab-upcoming': 'upcoming',
+  'tab-shelf': 'shelf',
   'tab-timeline': 'timeline',
   'tab-profile': 'profile',
 };
 const PANEL_BY_ID = {
-  'panel-watched': 'watched',
-  'panel-watchlist': 'watchlist',
-  'panel-upcoming': 'upcoming',
+  'panel-shelf': 'shelf',
   'panel-timeline': 'timeline',
   'panel-profile': 'profile',
 };
 
 function normalizeNavigationMarkup() {
   const buttons = document.querySelectorAll(
-    '#tab-watched, #tab-watchlist, #tab-upcoming, #tab-timeline, #tab-profile, [data-tab]',
+    '#tab-shelf, #tab-timeline, #tab-profile, [data-tab]',
   );
 
   for (const button of buttons) {
@@ -130,7 +131,7 @@ function normalizeNavigationMarkup() {
   }
 
   const panels = document.querySelectorAll(
-    '#panel-watched, #panel-watchlist, #panel-upcoming, #panel-timeline, #panel-profile, [data-panel]',
+    '#panel-shelf, #panel-timeline, #panel-profile, [data-panel]',
   );
 
   for (const panel of panels) {
@@ -154,6 +155,11 @@ const els = {
   sidebarUserAvatar: document.querySelector('#sidebar-user-avatar'),
   sidebarUserName: document.querySelector('#sidebar-user-name'),
   sidebarUserEmail: document.querySelector('#sidebar-user-email'),
+  bottomNavAvatar: document.querySelector('#bottom-nav-avatar'),
+  quickActions: document.querySelector('#quick-actions'),
+  quickRoulette: document.querySelector('[data-quick-roulette]'),
+  quickRouletteNote: document.querySelector('[data-quick-roulette-note]'),
+  shelfSubnav: document.querySelector('#shelf-subnav'),
   shelfCount: document.querySelector('#shelf-count'),
   moviesGrid: document.querySelector('#movies-grid'),
   emptyState: document.querySelector('#empty-state'),
@@ -441,7 +447,14 @@ const isRecommended = (movieId) =>
 const isFavorite = (movieId) => state.favorites.some((movie) => movie.tmdbId === movieId);
 
 function tabFromLocation() {
-  return HASH_TAB[window.location.hash] || 'watched';
+  const legacy = LEGACY_TAB_HASH[window.location.hash];
+
+  if (legacy) {
+    state.shelfTab = legacy.shelf;
+    return legacy.tab;
+  }
+
+  return HASH_TAB[window.location.hash] || 'shelf';
 }
 
 function avatarMarkup(
@@ -578,6 +591,15 @@ function renderSidebar() {
       </button>`;
     els.sidebarUserName.textContent = state.me.name;
     els.sidebarUserEmail.textContent = state.me.email;
+
+    if (els.bottomNavAvatar) {
+      els.bottomNavAvatar.innerHTML = avatarMarkup(state.me, {
+        size: 'h-full w-full',
+        textSize: 'text-[9px]',
+        tone: 'bg-accent/20 text-accent',
+        border: '',
+      });
+    }
   }
 
   if (members.length === 2) {
@@ -1085,6 +1107,43 @@ function closeRoulette() {
   if (els.modal.classList.contains('hidden')) {
     document.body.classList.remove('modal-open');
   }
+}
+
+function openQuickActions() {
+  if (!els.quickActions) return;
+
+  const canRoulette = state.watchlist.length >= 2;
+
+  if (els.quickRoulette) {
+    els.quickRoulette.disabled = !canRoulette;
+    els.quickRoulette.title = canRoulette
+      ? 'Sortear uma das indicações da dupla'
+      : 'Adicione pelo menos 2 indicações para sortear';
+  }
+
+  if (els.quickRouletteNote) {
+    els.quickRouletteNote.textContent = canRoulette
+      ? `${state.watchlist.length} indicações na fila para sortear.`
+      : 'Precisa de pelo menos 2 indicações.';
+  }
+
+  els.quickActions.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  els.quickActions.querySelector('[data-quick-search]')?.focus();
+}
+
+function closeQuickActions() {
+  if (!els.quickActions) return;
+
+  els.quickActions.classList.add('hidden');
+
+  const otherOpen =
+    !els.modal.classList.contains('hidden') ||
+    !els.rouletteModal.classList.contains('hidden') ||
+    !els.listModal.classList.contains('hidden') ||
+    !els.discoverModal.classList.contains('hidden');
+
+  if (!otherOpen) document.body.classList.remove('modal-open');
 }
 
 function renderFavoriteSlot(movie, { editable = true } = {}) {
@@ -2289,6 +2348,58 @@ function closeDiscover() {
   if (listModalOpen) els.listModal.querySelector('[data-close-list-modal-button]')?.focus();
 }
 
+function syncShelfSubnavOffset() {
+  const header = document.querySelector('#dashboard-tabs')?.closest('header');
+
+  if (!header) return;
+
+  document.documentElement.style.setProperty(
+    '--dashboard-header-h',
+    `${header.offsetHeight}px`,
+  );
+}
+
+function renderShelfTabs() {
+  for (const button of document.querySelectorAll('[data-shelf-tab]')) {
+    const active = button.dataset.shelfTab === state.shelfTab;
+
+    button.classList.toggle('border-zinc-100', active);
+    button.classList.toggle('text-zinc-100', active);
+    button.classList.toggle('font-bold', active);
+    button.classList.toggle('border-transparent', !active);
+    button.classList.toggle('text-zinc-500', !active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+
+  for (const panel of document.querySelectorAll('[data-shelf-panel]')) {
+    const active = panel.dataset.shelfPanel === state.shelfTab;
+
+    panel.classList.toggle('hidden', !active);
+
+    if (active) {
+      panel.classList.remove('animate-fade-up');
+      void panel.offsetWidth;
+      panel.classList.add('animate-fade-up');
+    }
+  }
+}
+
+function setShelfTab(sub, { scroll = true } = {}) {
+  state.shelfTab = SHELF_TABS.includes(sub) ? sub : 'watched';
+  renderShelfTabs();
+
+  if (!scroll) return;
+
+  const panel = document.querySelector('[data-panel="shelf"]');
+
+  if (!panel) return;
+
+  const header = document.querySelector('#dashboard-tabs')?.closest('header');
+  panel.style.scrollMarginTop = `${(header?.offsetHeight ?? 0) + 12}px`;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderTabs() {
   const counts = {
     watched: state.movies.length,
@@ -2301,7 +2412,7 @@ function renderTabs() {
 }
 
 function setActiveTab(tab, { push = false, animate = true } = {}) {
-  const next = TAB_HASH[tab] ? tab : 'watched';
+  const next = TAB_HASH[tab] ? tab : 'shelf';
 
   if (next !== 'profile') {
     if (state.audio) stopSong();
@@ -2314,10 +2425,15 @@ function setActiveTab(tab, { push = false, animate = true } = {}) {
     const active = button.dataset.tab === next;
 
     button.classList.toggle('is-active', active);
-    button.classList.toggle('text-zinc-400', !active);
-    button.classList.toggle('text-zinc-100', active);
-    button.setAttribute('aria-selected', String(active));
-    button.tabIndex = active ? 0 : -1;
+
+    if (button.classList.contains('tab-button')) {
+      button.classList.toggle('text-zinc-400', !active);
+      button.classList.toggle('text-zinc-100', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    } else {
+      button.setAttribute('aria-current', active ? 'page' : 'false');
+    }
   }
 
   for (const panel of document.querySelectorAll('[data-panel]')) {
@@ -2333,6 +2449,8 @@ function setActiveTab(tab, { push = false, animate = true } = {}) {
       panel.classList.add('animate-fade-up');
     }
   }
+
+  if (next === 'shelf') renderShelfTabs();
 
   if (push && window.location.hash !== TAB_HASH[next]) {
     window.history.pushState({ tab: next }, '', TAB_HASH[next]);
@@ -2685,10 +2803,62 @@ for (const button of document.querySelectorAll('[data-tab]')) {
   });
 }
 
+for (const button of document.querySelectorAll('[data-shelf-tab]')) {
+  button.addEventListener('click', () => {
+    setShelfTab(button.dataset.shelfTab);
+  });
+}
+
+for (const button of document.querySelectorAll('[data-nav-action="quick"]')) {
+  button.addEventListener('click', openQuickActions);
+}
+
+on(els.quickActions, 'click', (event) => {
+  if (
+    event.target.closest('[data-close-quick]') ||
+    event.target.closest('[data-close-quick-button]')
+  ) {
+    closeQuickActions();
+    return;
+  }
+
+  if (event.target.closest('[data-quick-search]')) {
+    closeQuickActions();
+    focusSearch();
+    return;
+  }
+
+  if (event.target.closest('[data-quick-roulette]')) {
+    closeQuickActions();
+    openRoulette();
+  }
+});
+
+on(els.shelfSubnav, 'keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+
+  const buttons = [...document.querySelectorAll('[data-shelf-tab]')];
+  const current = buttons.indexOf(document.activeElement);
+
+  if (current < 0) return;
+
+  event.preventDefault();
+
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? buttons.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+
+  buttons[nextIndex].focus();
+  setShelfTab(buttons[nextIndex].dataset.shelfTab);
+});
+
 on(els.tabs, 'keydown', (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
 
-  const buttons = [...document.querySelectorAll('[data-tab]')];
+  const buttons = [...els.tabs.querySelectorAll('[data-tab]')];
   const current = buttons.indexOf(document.activeElement);
 
   if (current < 0) return;
@@ -4486,6 +4656,11 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
+  if (els.quickActions && !els.quickActions.classList.contains('hidden')) {
+    closeQuickActions();
+    return;
+  }
+
   if (!els.modal.classList.contains('hidden')) {
     closeModal();
     return;
@@ -4500,6 +4675,8 @@ document.addEventListener('keydown', (event) => {
 for (const button of document.querySelectorAll('[data-logout]')) {
   button.addEventListener('click', () => logout());
 }
+
+window.addEventListener('resize', syncShelfSubnavOffset);
 
 async function boot() {
   try {
@@ -4526,6 +4703,7 @@ async function boot() {
       window.history.replaceState({ tab: state.activeTab }, '', TAB_HASH[state.activeTab]);
     }
 
+    syncShelfSubnavOffset();
     hideBootScreen();
     setupNotifications();
 
@@ -4549,5 +4727,5 @@ async function boot() {
 
 // A navegação é ligada antes de qualquer chamada de API: as abas funcionam
 // mesmo se o carregamento dos dados falhar.
-setActiveTab('watched', { animate: false });
+setActiveTab('shelf', { animate: false });
 boot();
