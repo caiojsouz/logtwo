@@ -1,13 +1,14 @@
 {
-  "name": "logtwo",
-  "short_name": "logtwo",
+  "name": "logtwo.",
+  "short_name": "logtwo.",
   "description": "Diário de filmes minimalista para duas pessoas.",
   "lang": "pt-BR",
-  "start_url": "/dashboard.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#09090b",
   "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/assets/img/icon-192.png",
