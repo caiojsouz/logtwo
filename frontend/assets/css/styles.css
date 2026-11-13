@@ -271,18 +271,22 @@ textarea {
   color: var(--logtwo-accent);
 }
 
-.bottom-nav-button.is-active {
-  background: rgba(255, 255, 255, 0.07);
-  color: #f4f4f5;
+.bottom-nav .bottom-nav-button.is-active {
+  background: rgba(39, 39, 42, 0.8);
+  color: #fafafa;
+  transform: scale(1.1);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.35);
 }
 
-.bottom-nav-button.is-active svg {
-  color: var(--logtwo-accent);
+.bottom-nav .bottom-nav-button.is-active:active {
+  transform: scale(1.02);
 }
 
-.bottom-nav-button.is-active .bottom-nav-avatar {
-  border-color: rgba(137, 160, 154, 0.75);
-  box-shadow: 0 0 0 2px rgba(137, 160, 154, 0.18);
+.bottom-nav .bottom-nav-button.is-active .bottom-nav-avatar {
+  opacity: 1;
+  transform: scale(1.1);
+  border-color: #f4f4f5;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4);
 }
 
 [data-panel].hidden {

@@ -20,7 +20,7 @@
     />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/assets/js/tailwind-config.js?v=20261112i"></script>
-    <link rel="stylesheet" href="/assets/css/styles.css?v=20261112b" />
+    <link rel="stylesheet" href="/assets/css/styles.css?v=20261113b" />
   </head>
   <body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased lg:h-screen lg:overflow-hidden">
     <div class="cinema-bg grain relative min-h-screen lg:h-screen">
@@ -917,22 +917,21 @@
     <nav
       id="bottom-nav"
       aria-label="Navegação principal"
-      class="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 lg:hidden"
+      class="bottom-nav fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2 lg:hidden"
     >
       <div
-        class="mx-auto flex max-w-sm items-stretch justify-between gap-1 rounded-[28px] border border-white/10 bg-zinc-950/85 px-2 py-1.5 shadow-cinema backdrop-blur-xl"
+        class="mx-auto flex w-full max-w-sm items-center justify-around rounded-[28px] border border-white/10 bg-zinc-950/85 px-2 py-2 shadow-cinema backdrop-blur-xl"
       >
         <button
           type="button"
           data-tab="timeline"
           aria-label="Timeline"
           aria-current="false"
-          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+          class="bottom-nav-button relative flex items-center justify-center rounded-full p-3 text-zinc-500 transition-all duration-300 ease-out scale-100 hover:text-zinc-300 hover:scale-110 active:scale-95"
         >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" />
           </svg>
-          Timeline
         </button>
 
         <button
@@ -940,12 +939,11 @@
           data-tab="shelf"
           aria-label="Estante"
           aria-current="page"
-          class="bottom-nav-button is-active flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+          class="bottom-nav-button is-active relative flex items-center justify-center rounded-full p-3 text-zinc-500 transition-all duration-300 ease-out scale-100 hover:text-zinc-300 hover:scale-110 active:scale-95"
         >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path d="M5 4v16M10 4v16M15 4v16M3 20h18" />
           </svg>
-          Estante
         </button>
 
         <button
@@ -953,13 +951,12 @@
           data-nav-action="quick"
           aria-label="Buscar ou sortear"
           aria-haspopup="dialog"
-          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+          class="bottom-nav-button relative flex items-center justify-center rounded-full p-3 text-zinc-500 transition-all duration-300 ease-out scale-100 hover:text-zinc-300 hover:scale-110 active:scale-95"
         >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="m16.5 16.5 4 4" />
           </svg>
-          Buscar
         </button>
 
         <button
@@ -967,19 +964,18 @@
           data-tab="profile"
           aria-label="Perfil"
           aria-current="false"
-          class="bottom-nav-button flex flex-1 flex-col items-center gap-1 rounded-3xl px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-500 transition hover:text-zinc-200"
+          class="bottom-nav-button relative flex items-center justify-center rounded-full p-3 text-zinc-500 transition-all duration-300 ease-out scale-100 active:scale-95"
         >
           <span
             id="bottom-nav-avatar"
             aria-hidden="true"
-            class="bottom-nav-avatar flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-panel/40 bg-panel/20 text-zinc-400"
+            class="bottom-nav-avatar flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-transparent bg-panel/20 text-zinc-400 opacity-70 transition-all duration-300 ease-out hover:opacity-100 hover:scale-110 active:scale-95"
           >
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <circle cx="12" cy="8" r="3.4" />
               <path d="M5 20c.8-3.7 3.5-5.6 7-5.6s6.2 1.9 7 5.6" />
             </svg>
           </span>
-          Perfil
         </button>
       </div>
     </nav>
