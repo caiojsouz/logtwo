@@ -68,6 +68,7 @@ const state = {
   listPickerOpen: false,
   activeListId: null,
   listModalTrigger: null,
+  listItemContext: null,
   discoverListId: null,
   discoverFilter: 'em_alta',
   discoverQuery: '',
@@ -273,6 +274,12 @@ const CHECK_ICON = `
 const TRASH_ICON = `
   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
     <path d="M4 7h16M9 4h6M7 7l1 13h8l1-13M10 11v5M14 11v5"></path>
+  </svg>`;
+
+const PENCIL_ICON = `
+  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+    <path d="M4 20h4L19 9a2.5 2.5 0 0 0-3.5-3.5L4 16v4z"></path>
+    <path d="M13.5 6.5 17.5 10.5"></path>
   </svg>`;
 
 const MUSIC_ICON = `
@@ -1803,29 +1810,22 @@ function renderListModal() {
          ${items
            .map(
              (item) => `
-               <article class="relative">
-                 <div class="aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10">
-                   ${
-                     item.posterUrl
-                       ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />`
-                       : `<div class="flex h-full w-full items-center justify-center text-zinc-400/50">${FILM_ICON}</div>`
-                   }
-                 </div>
-                 <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
-                 ${
-                   editable
-                     ? `<button
-                          type="button"
-                          data-remove-list-item="${item.id}"
-                          aria-label="Remover ${escapeHtml(item.title)} da lista"
-                          title="Remover da lista"
-                          ${state.listBusy ? 'disabled' : ''}
-                          class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-light/15 bg-base/80 text-zinc-300 backdrop-blur transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          ${TRASH_ICON}
-                        </button>`
-                     : ''
-                 }
+               <article>
+                 <button
+                   type="button"
+                   data-open-list-item="${item.id}"
+                   aria-label="Ver detalhes de ${escapeHtml(item.title)}"
+                   class="group block w-full text-left"
+                 >
+                   <div class="aspect-[2/3] overflow-hidden rounded-xl border border-panel/25 bg-panel/10">
+                     ${
+                       item.posterUrl
+                         ? `<img src="${escapeHtml(item.posterUrl)}" alt="" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" loading="lazy" decoding="async" />`
+                         : `<div class="flex h-full w-full items-center justify-center text-zinc-400/50">${FILM_ICON}</div>`
+                     }
+                   </div>
+                   <p class="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-zinc-100">${escapeHtml(item.title)}</p>
+                 </button>
                </article>`,
            )
            .join('')}
@@ -1857,9 +1857,24 @@ function renderListModal() {
     <div class="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-panel/25 bg-[#0b0d0c]/95 p-5 backdrop-blur sm:p-7">
       <div class="min-w-0">
         <p class="micro-label">${editable ? 'sua lista' : `lista de ${escapeHtml(firstName(ownerName))}`}</p>
-        <h2 id="list-modal-title" class="mt-1.5 font-display text-3xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
-          ${escapeHtml(list.title)}
-        </h2>
+        <div class="mt-1.5 flex items-center gap-2">
+          <h2 id="list-modal-title" class="font-display text-3xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
+            ${escapeHtml(list.title)}
+          </h2>
+          ${
+            editable
+              ? `<button
+                   type="button"
+                   data-rename-list="${list.id}"
+                   aria-label="Renomear lista"
+                   title="Renomear lista"
+                   class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:text-zinc-100"
+                 >
+                   ${PENCIL_ICON}
+                 </button>`
+              : ''
+          }
+        </div>
         <p class="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
           ${listItemCountText(items.length)}${editable ? '' : ' · somente leitura'}
         </p>
@@ -1985,27 +2000,80 @@ async function deleteList(listId) {
   }
 }
 
-async function removeListItem(itemId) {
-  if (state.listBusy || !state.activeListId) return;
+function openListItem(listId, itemId, trigger) {
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list) return;
 
-  const list = state.lists.find((item) => item.id === state.activeListId);
+  const item = (list.items || []).find((entry) => entry.id === itemId);
+  if (!item) return;
+
+  openMovie(item.tmdbId, trigger, {
+    listId: list.id,
+    itemId: item.id,
+    mediaType: item.mediaType || 'movie',
+  });
+}
+
+async function renameList(listId) {
+  if (state.listBusy || !state.me) return;
+
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list || list.userId !== state.me.id) return;
+
+  const input = window.prompt('Novo nome da lista:', list.title);
+  if (input === null) return;
+
+  const title = input.trim().replace(/\s+/g, ' ');
+
+  if (title.length < 2 || title.length > 60) {
+    toast('Informe um nome entre 2 e 60 caracteres para a lista.', 'error');
+    return;
+  }
+
+  if (title === list.title) return;
+
+  state.listBusy = true;
+
+  try {
+    const data = await api(`/api/lists/${listId}`, { method: 'PUT', body: { title } });
+
+    if (data?.list?.title) list.title = data.list.title;
+
+    renderLists();
+    if (state.activeListId === listId) renderListModal();
+    if (state.listPickerOpen) renderListPicker();
+    toast('Lista renomeada.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.listBusy = false;
+  }
+}
+
+async function removeFromListModal() {
+  const context = state.listItemContext;
+  if (!context || state.listBusy) return;
+
+  const list = state.lists.find((item) => item.id === context.listId);
   if (!list || list.userId !== state.me.id) return;
 
   state.listBusy = true;
-  renderListModal();
+  updateModalActions();
 
   try {
-    await api(`/api/lists/${list.id}/items/${itemId}`, { method: 'DELETE' });
-    list.items = (list.items || []).filter((item) => item.id !== itemId);
-    renderListModal();
+    await api(`/api/lists/${list.id}/items/${context.itemId}`, { method: 'DELETE' });
+    list.items = (list.items || []).filter((item) => item.id !== context.itemId);
+
     renderLists();
+    if (state.activeListId === list.id) renderListModal();
     if (state.listPickerOpen) renderListPicker();
+
+    closeModal();
     toast('Título removido da lista.');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
     state.listBusy = false;
-    if (state.activeListId) renderListModal();
   }
 }
 
@@ -3190,8 +3258,19 @@ on(els.listModal, 'click', (event) => {
     return;
   }
 
-  const removeButton = event.target.closest('[data-remove-list-item]');
-  if (removeButton) removeListItem(Number(removeButton.dataset.removeListItem));
+  const renameButton = event.target.closest('[data-rename-list]');
+
+  if (renameButton) {
+    renameList(Number(renameButton.dataset.renameList));
+    return;
+  }
+
+  const itemButton = event.target.closest('[data-open-list-item]');
+
+  if (itemButton) {
+    openListItem(state.activeListId, Number(itemButton.dataset.openListItem), itemButton);
+    return;
+  }
 });
 
 on(els.discoverModal, 'click', (event) => {
@@ -3340,9 +3419,27 @@ function starButtons(rating) {
   }).join('');
 }
 
+function listRemoveActionMarkup() {
+  if (!state.listItemContext) return '';
+
+  return `
+    <button
+      type="button"
+      data-remove-from-list
+      ${state.listBusy ? 'disabled' : ''}
+      class="inline-flex items-center gap-2 rounded-full border border-danger/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-danger/80 transition hover:border-danger/60 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      ${TRASH_ICON}
+      Remover da Lista
+    </button>`;
+}
+
 function modalActionsMarkup() {
   const movie = state.activeMovie;
   if (!movie) return '';
+
+  // Séries não entram no diário: ficam só com a ficha e a remoção da lista.
+  if (movie.mediaType === 'tv') return listRemoveActionMarkup();
 
   const recommendation = state.watchlist.find((item) => item.tmdbId === movie.tmdbId);
   const favorite = isFavorite(movie.tmdbId);
@@ -3435,7 +3532,9 @@ function modalActionsMarkup() {
       favoriteFull
         ? `<span class="text-[9px] uppercase tracking-[0.12em] text-zinc-400/60">limite de ${MAX_FAVORITES} favoritos</span>`
         : ''
-    }`;
+    }
+
+    ${listRemoveActionMarkup()}`;
 }
 
 function updateModalActions() {
@@ -3804,6 +3903,7 @@ function renderModal() {
   const partnerName = partner ? memberLabel(partner) : 'Sua dupla';
   const genres = movie.genres || [];
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
+  const isTv = movie.mediaType === 'tv';
   const backdrop = movie.backdropUrl
     ? `<img src="${escapeHtml(movie.backdropUrl)}" alt="" class="absolute inset-0 h-full w-full object-cover opacity-40" />`
     : '<div class="poster-sheen absolute inset-0 opacity-70"></div>';
@@ -3938,7 +4038,7 @@ function renderModal() {
           </div>
         </div>
         <div class="min-w-0 flex-1 pb-0.5">
-          <p class="micro-label">ficha do filme</p>
+          <p class="micro-label">${isTv ? 'ficha da série' : 'ficha do filme'}</p>
           <h2 id="modal-title" class="mt-2 font-display text-[30px] leading-[1.02] tracking-[-0.03em] sm:text-5xl">
             ${escapeHtml(movie.title)}
           </h2>
@@ -3980,15 +4080,23 @@ function renderModal() {
       </div>
       <div class="mt-3" data-list-picker></div>
 
-      <div class="my-6 h-px bg-panel/25"></div>
+      ${
+        isTv
+          ? ''
+          : `<div class="my-6 h-px bg-panel/25"></div>
 
       <div class="grid gap-4 lg:grid-cols-2">
         ${ownPanel}
         ${partnerPanel}
-      </div>
+      </div>`
+      }
 
       <p class="mt-5 text-center text-[8px] uppercase tracking-[0.2em] text-zinc-400/50">
-        cada nota é individual — você edita apenas a sua · dados e imagens via TMDB
+        ${
+          isTv
+            ? 'dados e imagens via TMDB'
+            : 'cada nota é individual — você edita apenas a sua · dados e imagens via TMDB'
+        }
       </p>
     </div>`;
 
@@ -4643,8 +4751,9 @@ async function toggleInterest(movieId) {
   }
 }
 
-function openMovie(movieId, trigger = document.activeElement) {
+function openMovie(movieId, trigger = document.activeElement, listContext = null) {
   state.modalTrigger = trigger;
+  state.listItemContext = listContext;
   state.activeMovie = null;
   state.draftRating = 0;
   state.isSaving = false;
@@ -4666,7 +4775,9 @@ function openMovie(movieId, trigger = document.activeElement) {
   const controller = new AbortController();
   state.modalAbort = controller;
 
-  api(`/api/movies/${movieId}`, { signal: controller.signal })
+  const isTv = listContext?.mediaType === 'tv';
+
+  api(`/api/movies/${movieId}${isTv ? '?mediaType=tv' : ''}`, { signal: controller.signal })
     .then((data) => {
       if (controller.signal.aborted) return;
 
@@ -4699,12 +4810,15 @@ function closeModal() {
   state.soundtrackAbort = null;
   state.soundtrackResults = [];
   state.activeMovie = null;
+  state.listItemContext = null;
   state.isSaving = false;
   state.listPickerOpen = false;
   state.listSaving = false;
 
   els.modal.classList.add('hidden');
-  document.body.classList.remove('modal-open');
+
+  const listModalOpen = els.listModal && !els.listModal.classList.contains('hidden');
+  if (!listModalOpen) document.body.classList.remove('modal-open');
 
   const trigger = state.modalTrigger;
   state.modalTrigger = null;
@@ -4737,6 +4851,11 @@ els.modal.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-action-list]')) {
     toggleListPicker();
+    return;
+  }
+
+  if (event.target.closest('[data-remove-from-list]')) {
+    removeFromListModal();
     return;
   }
 
@@ -4839,6 +4958,11 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
+  if (!els.modal.classList.contains('hidden')) {
+    closeModal();
+    return;
+  }
+
   if (!els.listModal.classList.contains('hidden')) {
     closeListModal();
     return;
@@ -4851,11 +4975,6 @@ document.addEventListener('keydown', (event) => {
 
   if (els.quickActions && !els.quickActions.classList.contains('hidden')) {
     closeQuickActions();
-    return;
-  }
-
-  if (!els.modal.classList.contains('hidden')) {
-    closeModal();
     return;
   }
 

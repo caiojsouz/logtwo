@@ -100,11 +100,10 @@ export async function searchMovies(query) {
     .slice(0, 12);
 }
 
-export function isAnimeSearchItem(item) {
+export function isJapaneseTitle(item) {
   return (
     item?.original_language === 'ja' &&
-    Array.isArray(item?.genre_ids) &&
-    item.genre_ids.includes(16)
+    (item.media_type === 'movie' || item.media_type === 'tv')
   );
 }
 
@@ -137,23 +136,22 @@ function mapSearchItem(item, mediaType) {
 
 /**
  * Busca mista (filmes + séries) usada pela descoberta das listas.
- * Com o filtro "anime", consulta /search/tv e mantém apenas animações japonesas.
+ * Com o filtro "anime", mantém apenas títulos japoneses do multi.
  */
 export async function searchTitles(query, { page = 1, filter = null } = {}) {
   const safePage = Math.min(Math.max(1, page), TMDB_MAX_PAGE);
   const animeOnly = filter === 'anime';
 
-  const data = await request(animeOnly ? '/search/tv' : '/search/multi', {
+  const data = await request('/search/multi', {
     query,
     language: config.tmdbLanguage,
     include_adult: 'false',
     page: safePage,
-    ...(animeOnly ? { with_original_language: 'ja' } : {}),
   });
 
   const results = (data.results || [])
-    .filter((item) => (animeOnly ? isAnimeSearchItem(item) : true))
-    .map((item) => mapSearchItem(item, animeOnly ? 'tv' : item.media_type))
+    .filter((item) => (animeOnly ? isJapaneseTitle(item) : true))
+    .map((item) => mapSearchItem(item, item.media_type))
     .filter(Boolean);
 
   return {
@@ -232,11 +230,29 @@ export async function getMovieDetails(tmdbId) {
   };
 }
 
+export async function getTvDetails(tmdbId) {
+  const data = await request(`/tv/${tmdbId}`, { language: config.tmdbLanguage });
+
+  return {
+    tmdbId: data.id,
+    mediaType: 'tv',
+    title: data.name || data.original_name || 'Sem título',
+    originalTitle: data.original_name || null,
+    posterPath: data.poster_path || null,
+    backdropPath: data.backdrop_path || null,
+    releaseDate: data.first_air_date || null,
+    runtime: toRuntime((data.episode_run_time || [])[0]),
+    overview: data.overview || '',
+    genres: (data.genres || []).map((genre) => genre.name),
+    voteAverage: typeof data.vote_average === 'number' ? data.vote_average : null,
+  };
+}
+
 const DISCOVER_FILTERS = {
   em_alta: { path: '/discover/movie', mediaType: 'movie' },
   anime: {
-    path: '/discover/tv',
-    mediaType: 'tv',
+    paths: ['/discover/tv', '/discover/movie'],
+    mediaTypes: ['tv', 'movie'],
     withGenres: '16',
     withOriginalLanguage: 'ja',
   },
@@ -270,6 +286,7 @@ export function normalizeDiscoverFilter(rawValue) {
 /**
  * Catálogo popular para a vitrine de descoberta das listas.
  * Cada filtro troca o endpoint e os parâmetros de gênero/idioma no TMDB.
+ * O TMDB não tem /discover/multi, então "anime" soma TV e filmes em paralelo.
  */
 export async function discoverTitles(filter, page = 1) {
   const entry = DISCOVER_FILTERS[filter];
@@ -279,8 +296,10 @@ export async function discoverTitles(filter, page = 1) {
   }
 
   const safePage = Math.min(Math.max(1, page), TMDB_MAX_PAGE);
+  const paths = entry.paths || [entry.path];
+  const mediaTypes = entry.mediaTypes || [entry.mediaType];
 
-  const data = await request(entry.path, {
+  const params = {
     language: config.tmdbLanguage,
     sort_by: 'popularity.desc',
     include_adult: 'false',
@@ -289,15 +308,21 @@ export async function discoverTitles(filter, page = 1) {
     ...(entry.withOriginalLanguage
       ? { with_original_language: entry.withOriginalLanguage }
       : {}),
-  });
+  };
 
-  const results = (data.results || [])
-    .map((item) => {
+  const responses = await Promise.all(paths.map((path) => request(path, params)));
+
+  const results = responses
+    .flatMap((response, index) =>
+      (response.results || []).map((item) => ({ item, mediaType: mediaTypes[index] })),
+    )
+    .sort((a, b) => (Number(b.item.popularity) || 0) - (Number(a.item.popularity) || 0))
+    .map(({ item, mediaType }) => {
       const releaseDate = item.release_date || item.first_air_date || null;
 
       return {
         tmdbId: item.id,
-        mediaType: entry.mediaType,
+        mediaType,
         title: item.title || item.name || item.original_title || item.original_name || null,
         originalTitle: item.original_title || item.original_name || null,
         releaseDate,
@@ -308,12 +333,16 @@ export async function discoverTitles(filter, page = 1) {
         voteAverage: typeof item.vote_average === 'number' ? item.vote_average : null,
       };
     })
-    .filter((item) => item.title)
-    .slice(0, 20);
+    .filter((item) => item.title);
+
+  // Fora do merge cada endpoint continua entregando no máximo 20 por página.
+  if (paths.length === 1) results.splice(20);
 
   return {
-    page: Number.isInteger(data.page) && data.page > 0 ? data.page : safePage,
-    totalPages: totalPagesFrom(data, safePage),
+    page: Number.isInteger(responses[0]?.page) && responses[0].page > 0
+      ? responses[0].page
+      : safePage,
+    totalPages: Math.max(...responses.map((response) => totalPagesFrom(response, safePage))),
     results,
   };
 }

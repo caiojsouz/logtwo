@@ -2,7 +2,7 @@ import express from 'express';
 import { all, one, run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import { serializeReview } from '../lib/serializers.js';
-import { getUpcomingMovies, searchMovies } from '../lib/tmdb.js';
+import { getTvDetails, getUpcomingMovies, getWatchProviders, imageUrl, searchMovies } from '../lib/tmdb.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
 import { searchLimiter } from '../middleware/rateLimits.js';
@@ -148,6 +148,28 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.params.id);
+
+    // Itens de série das listas abrem a ficha do TMDB, mas não entram no diário.
+    if (req.query.mediaType === 'tv') {
+      const details = await getTvDetails(movieId);
+      const watch = await getWatchProviders(movieId, 'tv').catch(() => ({ providers: [] }));
+
+      res.json({
+        movie: {
+          ...details,
+          year: details.releaseDate ? details.releaseDate.slice(0, 4) : null,
+          posterUrl: imageUrl(details.posterPath),
+          backdropUrl: imageUrl(details.backdropPath, 'w1280'),
+          songTitle: null,
+          songAudioUrl: null,
+          providers: watch.providers,
+          reviews: [],
+          interested: false,
+        },
+      });
+      return;
+    }
+
     const row = await ensureMovie(movieId);
     await ensureMovieProviders(row);
     const [reviews, interest] = await Promise.all([

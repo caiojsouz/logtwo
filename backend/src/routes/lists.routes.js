@@ -184,6 +184,26 @@ router.post(
   }),
 );
 
+router.put(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const listId = parseId(req.params.id, 'Lista');
+    const title = parseTitle(req.body?.title);
+    await loadOwnedList(listId, req.user.id);
+    await run('UPDATE custom_lists SET title = ? WHERE id = ?', [title, listId]);
+
+    const list = await one(
+      `SELECT l.*, u.name AS owner_name
+         FROM custom_lists l
+         JOIN users u ON u.id = l.user_id
+        WHERE l.id = ?`,
+      [listId],
+    );
+
+    res.json({ list: serializeList(list) });
+  }),
+);
+
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
