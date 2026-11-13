@@ -165,3 +165,14 @@ CREATE TABLE IF NOT EXISTS list_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id, added_at);
+
+-- Próxima sessão fixada pela dupla (banner "Em Cartaz" da Home).
+CREATE TABLE IF NOT EXISTS pinned_movies (
+  diary_id INTEGER PRIMARY KEY,
+  movie_id INTEGER NOT NULL,
+  pinned_by INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  FOREIGN KEY (diary_id) REFERENCES diaries(id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies(tmdb_id) ON DELETE CASCADE,
+  FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE CASCADE
+);

@@ -69,6 +69,8 @@ const state = {
   activeListId: null,
   listModalTrigger: null,
   listItemContext: null,
+  pinnedMovie: null,
+  pinBusy: false,
   discoverListId: null,
   discoverFilter: 'em_alta',
   discoverQuery: '',
@@ -181,6 +183,8 @@ const els = {
   timelineList: document.querySelector('#timeline-list'),
   timelineCount: document.querySelector('#timeline-count'),
   timelineEmpty: document.querySelector('#timeline-empty'),
+  homeCoupleHeader: document.querySelector('#home-couple-header'),
+  homePinned: document.querySelector('#home-pinned'),
   notificationsCard: document.querySelector('#notifications-card'),
   notificationsButton: document.querySelector('#notifications-button'),
   notificationsTest: document.querySelector('#notifications-test'),
@@ -280,6 +284,12 @@ const PENCIL_ICON = `
   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
     <path d="M4 20h4L19 9a2.5 2.5 0 0 0-3.5-3.5L4 16v4z"></path>
     <path d="M13.5 6.5 17.5 10.5"></path>
+  </svg>`;
+
+const PIN_ICON = `
+  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+    <path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z"></path>
+    <path d="M12 15v5"></path>
   </svg>`;
 
 const MUSIC_ICON = `
@@ -996,6 +1006,81 @@ function renderTimeline() {
   els.timelineEmpty.classList.toggle('hidden', events.length > 0);
   els.timelineList.innerHTML = events.map(renderTimelineItem).join('');
   updateTrackButtons();
+}
+
+function renderHomeHeader() {
+  if (!els.homeCoupleHeader) return;
+
+  const members = state.members.length ? state.members : [state.me].filter(Boolean);
+  const watched = Number(state.stats?.movieCount ?? state.movies.length) || 0;
+  const names = members.map((member) => escapeHtml(firstName(member?.name) || 'Alguém'));
+  const couple = names.length > 1
+    ? `${names[0]} <span class="text-accent">&</span> ${names[1]}`
+    : names[0] || 'logtwo.';
+
+  els.homeCoupleHeader.innerHTML = `
+    <div class="flex items-center justify-center -space-x-3">
+      ${members
+        .map((member, index) =>
+          avatarMarkup(member, {
+            size: 'h-10 w-10',
+            textSize: 'text-[11px]',
+            tone: memberTone(index),
+            border: 'border-2 border-zinc-950',
+          }),
+        )
+        .join('')}
+    </div>
+    <div class="mt-3 text-center">
+      <p class="font-display text-2xl leading-tight tracking-[-0.02em] text-zinc-100 sm:text-3xl">
+        ${couple}
+      </p>
+      <p class="mt-1.5 text-[9px] uppercase tracking-[0.18em] text-zinc-400">
+        ${watched === 1 ? '1 título assistido' : `${watched} títulos assistidos`} na timeline
+      </p>
+    </div>`;
+}
+
+function renderPinnedBanner() {
+  if (!els.homePinned) return;
+
+  const movie = state.pinnedMovie;
+
+  if (!movie) {
+    els.homePinned.classList.add('hidden');
+    els.homePinned.innerHTML = '';
+    return;
+  }
+
+  const artwork = movie.backdropUrl || movie.posterUrl;
+
+  els.homePinned.innerHTML = `
+    <article class="relative aspect-[4/3] overflow-hidden rounded-3xl border border-panel/25 bg-panel/10 sm:aspect-video">
+      ${
+        artwork
+          ? `<img src="${escapeHtml(artwork)}" alt="" loading="lazy" decoding="async" class="absolute inset-0 h-full w-full object-cover" />`
+          : '<div class="poster-sheen absolute inset-0"></div>'
+      }
+      <div class="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent"></div>
+      <div class="relative flex h-full flex-col justify-end gap-4 p-5 sm:p-6">
+        <div>
+          <p class="text-[9px] uppercase tracking-[0.24em] text-zinc-300">Próxima sessão</p>
+          <h3 class="mt-1.5 font-display text-3xl leading-[1.05] tracking-[-0.02em] text-zinc-50 sm:text-4xl">
+            ${escapeHtml(movie.title)}
+          </h3>
+        </div>
+        <div>
+          <button
+            type="button"
+            data-mark-watched="${movie.tmdbId}"
+            class="rounded-full bg-zinc-100 px-4 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-white"
+          >
+            Marcar como Assistido
+          </button>
+        </div>
+      </div>
+    </article>`;
+  els.homePinned.classList.remove('hidden');
 }
 
 async function refreshTimeline() {
@@ -2741,6 +2826,8 @@ function renderAll() {
   renderWatchlist();
   renderUpcoming();
   renderTimeline();
+  renderHomeHeader();
+  renderPinnedBanner();
   renderProfile();
   renderTabs();
 }
@@ -2761,7 +2848,7 @@ function applyDashboardData(data) {
 }
 
 async function loadDashboard() {
-  const [data, recommendationsData, profileData, timelineData, upcomingData, listsData] =
+  const [data, recommendationsData, profileData, timelineData, upcomingData, listsData, pinnedData] =
     await Promise.all([
       api('/api/diary'),
       api('/api/recommendations').catch((error) => {
@@ -2784,6 +2871,10 @@ async function loadDashboard() {
           }),
       api('/api/lists').catch((error) => {
         console.error('[logtwo] Não foi possível carregar as listas.', error);
+        return null;
+      }),
+      api('/api/movies/pinned').catch((error) => {
+        console.error('[logtwo] Não foi possível carregar o filme fixado.', error);
         return null;
       }),
     ]);
@@ -2814,6 +2905,10 @@ async function loadDashboard() {
 
   if (Array.isArray(listsData?.lists)) {
     state.lists = listsData.lists;
+  }
+
+  if (pinnedData) {
+    state.pinnedMovie = pinnedData.movie ?? null;
   }
 
   if (profileData?.user) {
@@ -3183,6 +3278,11 @@ on(els.timelineList, 'click', (event) => {
   if (target) openMovie(Number(target.dataset.movieId), target);
 });
 
+on(els.homePinned, 'click', (event) => {
+  const markWatched = event.target.closest('[data-mark-watched]');
+  if (markWatched) openMovie(Number(markWatched.dataset.markWatched), markWatched);
+});
+
 on(els.notificationsButton, 'click', enableNotifications);
 on(els.notificationsTest, 'click', testNotification);
 
@@ -3471,6 +3571,14 @@ function modalActionsMarkup() {
   const interested = Boolean(movie.interested);
   const interestDisabled = busy || state.interestBusy === movie.tmdbId;
 
+  const pinned = state.pinnedMovie?.tmdbId === movie.tmdbId;
+  const daysToRelease = daysUntil(movie.releaseDate);
+  const isUpcoming =
+    state.upcoming.some((item) => item.tmdbId === movie.tmdbId) ||
+    (daysToRelease !== null && daysToRelease > 0);
+  const showPin = isUpcoming || pinned;
+  const pinDisabled = busy || state.pinBusy;
+
   const base =
     'inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-40';
   const neutral = 'border-panel/35 text-zinc-300 hover:border-accent/40 hover:text-zinc-100';
@@ -3513,6 +3621,22 @@ function modalActionsMarkup() {
            >
              ${BOOKMARK_ICON}
              ${escapeHtml(interested ? 'Na lista ✓' : 'Pretendo assistir')}
+           </button>`
+        : ''
+    }
+
+    ${
+      showPin
+        ? `<button
+             type="button"
+             data-pin-movie
+             aria-pressed="${pinned}"
+             title="${pinned ? 'Remover a fixação da Home' : 'Fixar como próxima sessão na Home'}"
+             ${pinDisabled ? 'disabled' : ''}
+             class="${base} ${pinned ? selected : neutral}"
+           >
+             ${PIN_ICON}
+             ${pinned ? 'Fixado na Home' : 'Fixar na Home'}
            </button>`
         : ''
     }
@@ -4751,6 +4875,35 @@ async function toggleInterest(movieId) {
   }
 }
 
+async function togglePinnedMovie() {
+  const movie = state.activeMovie;
+  if (!movie || state.pinBusy) return;
+
+  const pinned = state.pinnedMovie?.tmdbId === movie.tmdbId;
+
+  state.pinBusy = true;
+  updateModalActions();
+
+  try {
+    if (pinned) {
+      await api('/api/movies/pinned', { method: 'DELETE' });
+      state.pinnedMovie = null;
+      toast('Fixação removida da Home.');
+    } else {
+      const data = await api(`/api/movies/pinned/${movie.tmdbId}`, { method: 'PUT' });
+      state.pinnedMovie = data?.movie ?? null;
+      toast('Filme fixado como próxima sessão.');
+    }
+
+    renderPinnedBanner();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    state.pinBusy = false;
+    updateModalActions();
+  }
+}
+
 function openMovie(movieId, trigger = document.activeElement, listContext = null) {
   state.modalTrigger = trigger;
   state.listItemContext = listContext;
@@ -4846,6 +4999,11 @@ els.modal.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-action-interest]')) {
     toggleInterest(state.activeMovie?.tmdbId);
+    return;
+  }
+
+  if (event.target.closest('[data-pin-movie]')) {
+    togglePinnedMovie();
     return;
   }
 

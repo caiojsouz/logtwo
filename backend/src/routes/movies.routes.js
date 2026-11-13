@@ -144,6 +144,59 @@ router.get(
   }),
 );
 
+function selectPinned(userId, diaryId) {
+  return one(
+    `SELECT m.*, CASE WHEN wi.id IS NULL THEN 0 ELSE 1 END AS interested
+       FROM pinned_movies pm
+       JOIN movies m ON m.tmdb_id = pm.movie_id
+  LEFT JOIN watchlist_interests wi
+         ON wi.movie_id = m.tmdb_id AND wi.user_id = ?
+      WHERE pm.diary_id = ?`,
+    [userId, diaryId],
+  );
+}
+
+router.get(
+  '/pinned',
+  asyncHandler(async (req, res) => {
+    const row = await selectPinned(req.user.id, req.diary.id);
+
+    res.json({
+      movie: row ? { ...serializeMovie(row), interested: Boolean(row.interested) } : null,
+    });
+  }),
+);
+
+router.put(
+  '/pinned/:id',
+  asyncHandler(async (req, res) => {
+    const movieId = parseMovieId(req.params.id);
+    await ensureMovie(movieId);
+
+    await run(
+      `INSERT INTO pinned_movies (diary_id, movie_id, pinned_by)
+       VALUES (?, ?, ?)
+       ON CONFLICT(diary_id) DO UPDATE SET
+         movie_id = excluded.movie_id,
+         pinned_by = excluded.pinned_by,
+         created_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`,
+      [req.diary.id, movieId, req.user.id],
+    );
+
+    const row = await selectPinned(req.user.id, req.diary.id);
+
+    res.json({ movie: { ...serializeMovie(row), interested: Boolean(row.interested) } });
+  }),
+);
+
+router.delete(
+  '/pinned',
+  asyncHandler(async (req, res) => {
+    await run('DELETE FROM pinned_movies WHERE diary_id = ?', [req.diary.id]);
+    res.json({ ok: true });
+  }),
+);
+
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
