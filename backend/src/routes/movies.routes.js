@@ -207,7 +207,7 @@ router.get(
       const [details, watch, extras] = await Promise.all([
         getTvDetails(movieId),
         getWatchProviders(movieId, 'tv').catch(() => ({ providers: [] })),
-        getMediaExtras(movieId, 'tv').catch(() => ({ trailerKey: null, backdrops: [] })),
+        getMediaExtras(movieId, 'tv').catch(() => ({ appleTrailerUrl: null, backdrops: [] })),
       ]);
 
       res.json({
@@ -219,7 +219,7 @@ router.get(
           songTitle: null,
           songAudioUrl: null,
           providers: watch.providers,
-          trailerKey: extras.trailerKey,
+          appleTrailerUrl: extras.appleTrailerUrl,
           backdrops: extras.backdrops,
           reviews: [],
           interested: false,
@@ -237,7 +237,7 @@ router.get(
         movieId,
       ]),
       getMediaExtras(movieId, row.media_type || 'movie').catch(() => ({
-        trailerKey: null,
+        appleTrailerUrl: null,
         backdrops: [],
       })),
     ]);
@@ -246,7 +246,7 @@ router.get(
       movie: {
         ...serializeMovie(row, reviews.map(serializeReview)),
         interested: Boolean(interest),
-        trailerKey: extras.trailerKey,
+        appleTrailerUrl: extras.appleTrailerUrl,
         backdrops: extras.backdrops,
       },
     });

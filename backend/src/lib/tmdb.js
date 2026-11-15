@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { AppError } from './errors.js';
+import { getApplePreview } from './itunes.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -248,26 +249,6 @@ export async function getTvDetails(tmdbId) {
   };
 }
 
-const TRAILER_LANGUAGE_PRIORITY = ['pt', 'en', 'ja'];
-
-function pickTrailerKey(videos) {
-  const candidates = (videos?.results || []).filter(
-    (video) => video?.site === 'YouTube' && video?.key,
-  );
-
-  const trailers = candidates.filter((video) => video.type === 'Trailer');
-  const pool = trailers.length ? trailers : candidates.filter((video) => video.type === 'Teaser');
-
-  if (!pool.length) return null;
-
-  for (const language of TRAILER_LANGUAGE_PRIORITY) {
-    const match = pool.find((video) => video.iso_639_1 === language);
-    if (match) return match.key;
-  }
-
-  return pool[0].key;
-}
-
 function pickBackdrops(images, limit = 8) {
   return (images?.backdrops || [])
     .map((backdrop) => backdrop?.file_path)
@@ -276,22 +257,29 @@ function pickBackdrops(images, limit = 8) {
 }
 
 /**
- * Trailer oficial e cenas (backdrops) de um filme ou série numa única chamada.
- * Prioriza trailer em pt-BR, com fallback para en e ja (comum em animes);
- * aceita Teaser quando não existe Trailer.
+ * Cenas (backdrops) do TMDB + prévia oficial em vídeo (.m4v) da Apple.
+ * A prévia vem da iTunes Search API usando o título original e o ano;
+ * quando a obra não está no iTunes, appleTrailerUrl é null e o frontend
+ * inicia o carrossel direto nas imagens.
  */
 export async function getMediaExtras(tmdbId, mediaType = 'movie') {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
 
   const data = await request(`/${type}/${tmdbId}`, {
     language: config.tmdbLanguage,
-    append_to_response: 'videos,images',
+    append_to_response: 'images',
     include_image_language: 'null,pt,en',
-    include_video_language: 'pt-BR,en,ja',
   });
 
+  const title =
+    (type === 'tv' ? data.name || data.original_name : data.original_title || data.title) || null;
+  const releaseDate = type === 'tv' ? data.first_air_date : data.release_date;
+  const year = releaseDate ? String(releaseDate).slice(0, 4) : null;
+
+  const appleTrailerUrl = await getApplePreview(title, year, type).catch(() => null);
+
   return {
-    trailerKey: pickTrailerKey(data.videos),
+    appleTrailerUrl,
     backdrops: pickBackdrops(data.images),
   };
 }

@@ -350,11 +350,7 @@ function providersMarkup(providers) {
     </div>`;
 }
 
-const HERO_YT_QUERY =
-  'autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&loop=1';
-
-function volumeXIcon() {
-  return `
+function volumeXIcon() {  return `
     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
       <line x1="23" y1="9" x2="17" y2="15"></line>
@@ -377,20 +373,23 @@ function maximizeIcon() {
     </svg>`;
 }
 
-function heroTrailerSlide(trailerKey) {
-  const safeKey = escapeHtml(trailerKey);
+function heroVideoSlide(appleTrailerUrl) {
+  const safeUrl = escapeHtml(appleTrailerUrl);
 
+  // autoPlay + muted + playsInline são exigidos juntos por iOS/Android para
+  // reprodução automática silenciosa sem abrir o player do sistema.
   return `
-    <div class="relative h-full w-full shrink-0 snap-center" data-hero-slide="trailer">
-      <iframe
-        data-hero-trailer
-        src="https://www.youtube.com/embed/${safeKey}?${HERO_YT_QUERY}&playlist=${safeKey}"
-        title="Trailer oficial"
-        frameborder="0"
-        referrerpolicy="strict-origin-when-cross-origin"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        class="pointer-events-none h-full w-full scale-[1.15]"
-      ></iframe>
+    <div class="relative h-full w-full shrink-0 snap-center" data-hero-slide="video">
+      <video
+        data-hero-video
+        src="${safeUrl}"
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        class="h-full w-full object-cover"
+      ></video>
     </div>`;
 }
 
@@ -413,9 +412,9 @@ function heroImageSlide(path) {
 
 function heroCarouselMarkup(movie) {
   const backdrops = Array.isArray(movie?.backdrops) ? movie.backdrops.filter(Boolean) : [];
-  const hasTrailer = Boolean(movie?.trailerKey);
+  const hasVideo = Boolean(movie?.appleTrailerUrl);
   const slides = [
-    ...(hasTrailer ? [heroTrailerSlide(movie.trailerKey)] : []),
+    ...(hasVideo ? [heroVideoSlide(movie.appleTrailerUrl)] : []),
     ...backdrops.map(heroImageSlide),
   ];
 
@@ -430,7 +429,7 @@ function heroCarouselMarkup(movie) {
       <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent"></div>
 
       ${
-        hasTrailer
+        hasVideo
           ? `<div data-hero-controls class="absolute right-16 top-4 z-20 flex gap-2">
                <button
                  type="button"
@@ -5101,18 +5100,23 @@ function initHeroCarousel() {
   const carousel = heroCarouselEl();
   if (!carousel) return;
   carousel.addEventListener('scroll', updateHeroUi, { passive: true });
+
+  const video = els.modal.querySelector('[data-hero-video]');
+  if (video) {
+    video.muted = true;
+    // Alguns navegadores ignoram o atributo autoplay e exigem play() explícito.
+    video.play?.().catch(() => {});
+  }
+
   updateHeroUi();
 }
 
 function toggleHeroMute() {
-  const iframe = els.modal.querySelector('[data-hero-trailer]');
-  if (!iframe?.contentWindow) return;
+  const video = els.modal.querySelector('[data-hero-video]');
+  if (!video) return;
 
-  heroMuted = !heroMuted;
-  iframe.contentWindow.postMessage(
-    JSON.stringify({ event: 'command', func: heroMuted ? 'mute' : 'unMute', args: [] }),
-    '*',
-  );
+  video.muted = !video.muted;
+  heroMuted = video.muted;
 
   const button = els.modal.querySelector('[data-hero-mute]');
   if (!button) return;
@@ -5122,12 +5126,22 @@ function toggleHeroMute() {
 }
 
 function toggleHeroFullscreen() {
-  const hero = els.modal.querySelector('[data-hero]');
-  if (!hero) return;
+  const video = els.modal.querySelector('[data-hero-video]');
+  if (!video) return;
 
-  // Fullscreen é negado sem gesto do usuário ou em contextos sem permissão.
-  const pending = document.fullscreenElement ? document.exitFullscreen() : hero.requestFullscreen?.();
-  pending?.catch?.(() => {});
+  // Tela cheia é negada sem gesto do usuário; iOS Safari só expõe
+  // webkitEnterFullscreen diretamente no elemento <video>.
+  if (document.fullscreenElement || video.webkitDisplayingFullscreen) {
+    if (document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+    else video.webkitExitFullscreen?.();
+    return;
+  }
+
+  if (video.requestFullscreen) {
+    video.requestFullscreen().catch(() => video.webkitEnterFullscreen?.());
+  } else {
+    video.webkitEnterFullscreen?.();
+  }
 }
 
 function goToHeroSlide(index) {
