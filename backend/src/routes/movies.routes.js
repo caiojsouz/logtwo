@@ -2,7 +2,7 @@ import express from 'express';
 import { all, one, run } from '../db/index.js';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import { serializeReview } from '../lib/serializers.js';
-import { getTvDetails, getUpcomingMovies, getWatchProviders, imageUrl, searchMovies } from '../lib/tmdb.js';
+import { getMediaExtras, getTvDetails, getUpcomingMovies, getWatchProviders, imageUrl, searchMovies } from '../lib/tmdb.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveDiary } from '../middleware/diary.js';
 import { searchLimiter } from '../middleware/rateLimits.js';
@@ -204,8 +204,11 @@ router.get(
 
     // Itens de série das listas abrem a ficha do TMDB, mas não entram no diário.
     if (req.query.mediaType === 'tv') {
-      const details = await getTvDetails(movieId);
-      const watch = await getWatchProviders(movieId, 'tv').catch(() => ({ providers: [] }));
+      const [details, watch, extras] = await Promise.all([
+        getTvDetails(movieId),
+        getWatchProviders(movieId, 'tv').catch(() => ({ providers: [] })),
+        getMediaExtras(movieId, 'tv').catch(() => ({ trailerKey: null, backdrops: [] })),
+      ]);
 
       res.json({
         movie: {
@@ -216,6 +219,8 @@ router.get(
           songTitle: null,
           songAudioUrl: null,
           providers: watch.providers,
+          trailerKey: extras.trailerKey,
+          backdrops: extras.backdrops,
           reviews: [],
           interested: false,
         },
@@ -225,18 +230,24 @@ router.get(
 
     const row = await ensureMovie(movieId);
     await ensureMovieProviders(row);
-    const [reviews, interest] = await Promise.all([
+    const [reviews, interest, extras] = await Promise.all([
       getDiaryReviews(req.diary.id, movieId),
       one('SELECT id FROM watchlist_interests WHERE user_id = ? AND movie_id = ?', [
         req.user.id,
         movieId,
       ]),
+      getMediaExtras(movieId, row.media_type || 'movie').catch(() => ({
+        trailerKey: null,
+        backdrops: [],
+      })),
     ]);
 
     res.json({
       movie: {
         ...serializeMovie(row, reviews.map(serializeReview)),
         interested: Boolean(interest),
+        trailerKey: extras.trailerKey,
+        backdrops: extras.backdrops,
       },
     });
   }),

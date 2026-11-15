@@ -248,6 +248,54 @@ export async function getTvDetails(tmdbId) {
   };
 }
 
+const TRAILER_LANGUAGE_PRIORITY = ['pt', 'en', 'ja'];
+
+function pickTrailerKey(videos) {
+  const candidates = (videos?.results || []).filter(
+    (video) => video?.site === 'YouTube' && video?.key,
+  );
+
+  const trailers = candidates.filter((video) => video.type === 'Trailer');
+  const pool = trailers.length ? trailers : candidates.filter((video) => video.type === 'Teaser');
+
+  if (!pool.length) return null;
+
+  for (const language of TRAILER_LANGUAGE_PRIORITY) {
+    const match = pool.find((video) => video.iso_639_1 === language);
+    if (match) return match.key;
+  }
+
+  return pool[0].key;
+}
+
+function pickBackdrops(images, limit = 8) {
+  return (images?.backdrops || [])
+    .map((backdrop) => backdrop?.file_path)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+/**
+ * Trailer oficial e cenas (backdrops) de um filme ou série numa única chamada.
+ * Prioriza trailer em pt-BR, com fallback para en e ja (comum em animes);
+ * aceita Teaser quando não existe Trailer.
+ */
+export async function getMediaExtras(tmdbId, mediaType = 'movie') {
+  const type = mediaType === 'tv' ? 'tv' : 'movie';
+
+  const data = await request(`/${type}/${tmdbId}`, {
+    language: config.tmdbLanguage,
+    append_to_response: 'videos,images',
+    include_image_language: 'null,pt,en',
+    include_video_language: 'pt-BR,en,ja',
+  });
+
+  return {
+    trailerKey: pickTrailerKey(data.videos),
+    backdrops: pickBackdrops(data.images),
+  };
+}
+
 const DISCOVER_FILTERS = {
   em_alta: { path: '/discover/movie', mediaType: 'movie' },
   anime: {

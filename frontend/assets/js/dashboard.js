@@ -350,6 +350,124 @@ function providersMarkup(providers) {
     </div>`;
 }
 
+const HERO_YT_QUERY =
+  'autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&loop=1';
+
+function volumeXIcon() {
+  return `
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <line x1="23" y1="9" x2="17" y2="15"></line>
+      <line x1="17" y1="9" x2="23" y2="15"></line>
+    </svg>`;
+}
+
+function volume2Icon() {
+  return `
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    </svg>`;
+}
+
+function maximizeIcon() {
+  return `
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+    </svg>`;
+}
+
+function heroTrailerSlide(trailerKey) {
+  const safeKey = escapeHtml(trailerKey);
+
+  return `
+    <div class="relative h-full w-full shrink-0 snap-center" data-hero-slide="trailer">
+      <iframe
+        data-hero-trailer
+        src="https://www.youtube.com/embed/${safeKey}?${HERO_YT_QUERY}&playlist=${safeKey}"
+        title="Trailer oficial"
+        frameborder="0"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="autoplay; encrypted-media; picture-in-picture"
+        class="pointer-events-none h-full w-full scale-[1.15]"
+      ></iframe>
+    </div>`;
+}
+
+function heroImageSlide(path) {
+  const safePath = escapeHtml(path);
+  const url = `https://image.tmdb.org/t/p/w1280${safePath}`;
+
+  return `
+    <div class="h-full w-full shrink-0 snap-center" data-hero-slide="image">
+      <img
+        src="${url}"
+        alt="Cena da obra"
+        loading="lazy"
+        decoding="async"
+        data-gallery-image="${url}"
+        class="h-full w-full cursor-zoom-in object-cover"
+      />
+    </div>`;
+}
+
+function heroCarouselMarkup(movie) {
+  const backdrops = Array.isArray(movie?.backdrops) ? movie.backdrops.filter(Boolean) : [];
+  const hasTrailer = Boolean(movie?.trailerKey);
+  const slides = [
+    ...(hasTrailer ? [heroTrailerSlide(movie.trailerKey)] : []),
+    ...backdrops.map(heroImageSlide),
+  ];
+
+  if (!slides.length) return '';
+
+  return `
+    <div class="relative aspect-video w-full overflow-hidden rounded-t-[26px] bg-zinc-950 sm:rounded-t-[30px]" data-hero>
+      <div data-hero-carousel class="no-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain">
+        ${slides.join('')}
+      </div>
+
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent"></div>
+
+      ${
+        hasTrailer
+          ? `<div data-hero-controls class="absolute right-16 top-4 z-20 flex gap-2">
+               <button
+                 type="button"
+                 data-hero-mute
+                 aria-pressed="true"
+                 aria-label="Ativar som"
+                 class="rounded-full border border-zinc-700/50 bg-zinc-900/60 p-2 text-zinc-100 backdrop-blur-md transition hover:border-accent/50 hover:text-accent"
+               >${volumeXIcon()}</button>
+               <button
+                 type="button"
+                 data-hero-fullscreen
+                 aria-label="Expandir vídeo"
+                 class="rounded-full border border-zinc-700/50 bg-zinc-900/60 p-2 text-zinc-100 backdrop-blur-md transition hover:border-accent/50 hover:text-accent"
+               >${maximizeIcon()}</button>
+             </div>`
+          : ''
+      }
+
+      ${
+        slides.length > 1
+          ? `<div data-hero-indicators class="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-1.5">
+               ${slides
+                 .map(
+                   (_, index) => `<button
+                     type="button"
+                     data-hero-dot="${index}"
+                     aria-label="Ir para o slide ${index + 1}"
+                     class="h-1 rounded-full transition-all ${index === 0 ? 'w-5 bg-zinc-100' : 'w-2 bg-zinc-100/40 hover:bg-zinc-100/70'}"
+                   ></button>`,
+                 )
+                 .join('')}
+             </div>`
+          : ''
+      }
+    </div>`;
+}
+
 function songPlayButton(movie, className = '') {
   if (!movie?.songAudioUrl) return '';
 
@@ -4028,9 +4146,6 @@ function renderModal() {
   const genres = movie.genres || [];
   const runtime = movie.runtime ? formatDuration(movie.runtime) : null;
   const isTv = movie.mediaType === 'tv';
-  const backdrop = movie.backdropUrl
-    ? `<img src="${escapeHtml(movie.backdropUrl)}" alt="" class="absolute inset-0 h-full w-full object-cover opacity-40" />`
-    : '<div class="poster-sheen absolute inset-0 opacity-70"></div>';
 
   const ownPanel = `
     <section class="rounded-2xl border border-accent/25 bg-accent/[0.04] p-5">
@@ -4150,12 +4265,11 @@ function renderModal() {
     </section>`;
 
   els.modalContent.innerHTML = `
-    <div class="relative overflow-hidden rounded-t-[26px] sm:rounded-t-[30px]">
-      ${backdrop}
-      <div class="absolute inset-0 bg-gradient-to-t from-[#0b0d0c] via-[#0b0d0c]/75 to-[#0b0d0c]/20"></div>
-      ${modalCloseButton()}
+    ${modalCloseButton()}
+    ${heroCarouselMarkup(movie)}
 
-      <div class="relative z-10 flex items-end gap-4 px-5 pb-6 pt-24 sm:gap-7 sm:px-8 sm:pb-8 sm:pt-28">
+    <div class="px-5 pb-7 sm:px-8 sm:pb-8">
+      <div class="flex items-start gap-4 pt-5 sm:gap-6 sm:pt-6">
         <div class="w-[94px] shrink-0 sm:w-[142px]">
           <div class="aspect-[2/3] overflow-hidden rounded-xl border border-light/10 bg-panel/20 shadow-2xl">
             ${posterMarkup(movie)}
@@ -4190,10 +4304,8 @@ function renderModal() {
           }
         </div>
       </div>
-    </div>
 
-    <div class="px-5 pb-7 sm:px-8 sm:pb-8">
-      <p class="max-w-2xl text-[13px] leading-relaxed ${movie.overview ? 'text-zinc-400' : 'italic text-zinc-400/60'}">
+      <p class="mt-4 max-w-2xl text-[13px] leading-relaxed ${movie.overview ? 'text-zinc-400' : 'italic text-zinc-400/60'}">
         ${escapeHtml(movie.overview || 'Sem sinopse disponível no TMDB.')}
       </p>
 
@@ -4225,6 +4337,7 @@ function renderModal() {
     </div>`;
 
   renderListPicker();
+  initHeroCarousel();
 }
 
 function paintStars(rating, preview = 0) {
@@ -4956,7 +5069,104 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
     });
 }
 
+let heroMuted = true;
+
+function heroCarouselEl() {
+  return els.modal.querySelector('[data-hero-carousel]');
+}
+
+function heroSlideIndex() {
+  const carousel = heroCarouselEl();
+  if (!carousel) return 0;
+  return Math.round(carousel.scrollLeft / (carousel.clientWidth || 1));
+}
+
+function updateHeroUi() {
+  const index = heroSlideIndex();
+
+  for (const dot of els.modal.querySelectorAll('[data-hero-dot]')) {
+    const active = Number(dot.dataset.heroDot) === index;
+    dot.classList.toggle('w-5', active);
+    dot.classList.toggle('bg-zinc-100', active);
+    dot.classList.toggle('w-2', !active);
+    dot.classList.toggle('bg-zinc-100/40', !active);
+  }
+
+  const controls = els.modal.querySelector('[data-hero-controls]');
+  if (controls) controls.classList.toggle('hidden', index !== 0);
+}
+
+function initHeroCarousel() {
+  heroMuted = true;
+  const carousel = heroCarouselEl();
+  if (!carousel) return;
+  carousel.addEventListener('scroll', updateHeroUi, { passive: true });
+  updateHeroUi();
+}
+
+function toggleHeroMute() {
+  const iframe = els.modal.querySelector('[data-hero-trailer]');
+  if (!iframe?.contentWindow) return;
+
+  heroMuted = !heroMuted;
+  iframe.contentWindow.postMessage(
+    JSON.stringify({ event: 'command', func: heroMuted ? 'mute' : 'unMute', args: [] }),
+    '*',
+  );
+
+  const button = els.modal.querySelector('[data-hero-mute]');
+  if (!button) return;
+  button.innerHTML = heroMuted ? volumeXIcon() : volume2Icon();
+  button.setAttribute('aria-pressed', String(heroMuted));
+  button.setAttribute('aria-label', heroMuted ? 'Ativar som' : 'Silenciar');
+}
+
+function toggleHeroFullscreen() {
+  const hero = els.modal.querySelector('[data-hero]');
+  if (!hero) return;
+
+  // Fullscreen é negado sem gesto do usuário ou em contextos sem permissão.
+  const pending = document.fullscreenElement ? document.exitFullscreen() : hero.requestFullscreen?.();
+  pending?.catch?.(() => {});
+}
+
+function goToHeroSlide(index) {
+  const carousel = heroCarouselEl();
+  if (!carousel) return;
+  carousel.scrollTo({ left: index * carousel.clientWidth, behavior: 'smooth' });
+}
+
+let lightboxEl = null;
+
+function openLightbox(src) {
+  if (!src) return;
+
+  closeLightbox();
+
+  const overlay = document.createElement('div');
+  overlay.className =
+    'fixed inset-0 z-[90] flex items-center justify-center bg-base/95 p-4 backdrop-blur-md animate-fade-in';
+  overlay.setAttribute('data-lightbox', '');
+  overlay.innerHTML = `
+    <img
+      src="${escapeHtml(src)}"
+      alt="Cena ampliada"
+      class="max-h-full max-w-full rounded-xl border border-zinc-800 object-contain shadow-cinema animate-scale-in"
+    />`;
+
+  overlay.addEventListener('click', closeLightbox);
+  document.body.appendChild(overlay);
+  lightboxEl = overlay;
+}
+
+function closeLightbox() {
+  if (!lightboxEl) return;
+  lightboxEl.remove();
+  lightboxEl = null;
+}
+
 function closeModal() {
+  closeLightbox();
   state.modalAbort?.abort();
   state.modalAbort = null;
   state.soundtrackAbort?.abort();
@@ -4984,6 +5194,30 @@ function closeModal() {
 els.modal.addEventListener('click', (event) => {
   if (event.target.closest('[data-close-modal], [data-close-modal-button]')) {
     closeModal();
+    return;
+  }
+
+  if (event.target.closest('[data-hero-mute]')) {
+    toggleHeroMute();
+    return;
+  }
+
+  if (event.target.closest('[data-hero-fullscreen]')) {
+    toggleHeroFullscreen();
+    return;
+  }
+
+  const heroDot = event.target.closest('[data-hero-dot]');
+
+  if (heroDot) {
+    goToHeroSlide(Number(heroDot.dataset.heroDot));
+    return;
+  }
+
+  const galleryImage = event.target.closest('[data-gallery-image]');
+
+  if (galleryImage) {
+    openLightbox(galleryImage.dataset.galleryImage);
     return;
   }
 
@@ -5110,6 +5344,11 @@ els.modal.addEventListener('keydown', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+
+  if (lightboxEl) {
+    closeLightbox();
+    return;
+  }
 
   if (!els.discoverModal.classList.contains('hidden')) {
     closeDiscover();
