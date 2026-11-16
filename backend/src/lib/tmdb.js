@@ -77,8 +77,13 @@ function toRuntime(value) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+/**
+ * Busca principal unificada: usa /search/multi para retornar filmes, séries e
+ * animes juntos. mapSearchItem descarta pessoas (media_type === 'person') e
+ * normaliza título/ano/mediaType, já que o TMDB usa chaves diferentes p/ movie e tv.
+ */
 export async function searchMovies(query) {
-  const data = await request('/search/movie', {
+  const data = await request('/search/multi', {
     query,
     language: config.tmdbLanguage,
     include_adult: 'false',
@@ -86,18 +91,8 @@ export async function searchMovies(query) {
   });
 
   return (data.results || [])
-    .map((movie) => ({
-      tmdbId: movie.id,
-      title: movie.title || movie.original_title || 'Sem título',
-      originalTitle: movie.original_title || null,
-      releaseDate: movie.release_date || null,
-      year: movie.release_date ? movie.release_date.slice(0, 4) : null,
-      posterPath: movie.poster_path || null,
-      posterUrl: imageUrl(movie.poster_path),
-      overview: movie.overview || '',
-      voteAverage: typeof movie.vote_average === 'number' ? movie.vote_average : null,
-    }))
-    .filter((movie) => movie.title)
+    .map((item) => mapSearchItem(item, item.media_type))
+    .filter(Boolean)
     .slice(0, 12);
 }
 

@@ -81,7 +81,12 @@ router.get(
     const inDiary = new Set(diaryMovieIds);
 
     res.json({
-      results: results.map((movie) => ({ ...movie, inDiary: inDiary.has(movie.tmdbId) })),
+      results: results.map((movie) => ({
+        ...movie,
+        // inDiary só faz sentido para filmes; ids de movie e tv são namespaces
+        // separados no TMDB e poderiam colidir.
+        inDiary: movie.mediaType === 'movie' && inDiary.has(movie.tmdbId),
+      })),
     });
   }),
 );

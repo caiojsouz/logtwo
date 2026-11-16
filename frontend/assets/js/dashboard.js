@@ -3086,18 +3086,35 @@ function renderSearchResults(results) {
   if (results.length === 0) {
     showSearchPanel(`
       <div class="px-6 py-10 text-center">
-        <p class="text-sm text-zinc-100">Nenhum filme encontrado para “${escapeHtml(query)}”.</p>
+        <p class="text-sm text-zinc-100">Nenhum resultado encontrado para “${escapeHtml(query)}”.</p>
         <p class="mt-2 text-[11px] text-zinc-400">Tente outro título ou o nome original.</p>
       </div>`);
     return;
   }
 
   const rows = results
-    .map(
-      (movie) => `
+    .map((movie) => {
+      const mediaType = movie.mediaType || 'movie';
+      const mediaLabel = mediaType === 'tv' ? 'Série' : 'Filme';
+      const addCircle = `<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-400">
+                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                   </span>`;
+
+      // Séries não entram no diário/indicações, então o selo de estado vale só p/ filmes.
+      const indicator =
+        mediaType === 'tv'
+          ? addCircle
+          : movie.inDiary
+            ? `<span class="shrink-0 rounded-full border border-accent/25 bg-accent/[0.06] px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-accent">no diário</span>`
+            : isRecommended(movie.tmdbId)
+              ? `<span class="shrink-0 rounded-full border border-light/20 px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-light/70">indicado</span>`
+              : addCircle;
+
+      return `
         <button
           type="button"
           data-search-result="${movie.tmdbId}"
+          data-search-media="${mediaType}"
           class="search-row flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-panel/15"
         >
           <div class="h-16 w-11 shrink-0 overflow-hidden rounded-md bg-panel/20">
@@ -3105,21 +3122,16 @@ function renderSearchResults(results) {
           </div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-[13px] font-medium text-zinc-100">${escapeHtml(movie.title)}</p>
-            <p class="mt-1 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
-              ${movie.year ? escapeHtml(movie.year) : 'sem data'}
+            <p class="mt-1 flex items-center gap-1.5">
+              <span class="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">${mediaLabel}</span>
+              <span class="truncate text-[9px] uppercase tracking-[0.16em] text-zinc-400">
+                ${movie.year ? escapeHtml(movie.year) : 'sem data'}
+              </span>
             </p>
           </div>
-          ${
-            movie.inDiary
-              ? `<span class="shrink-0 rounded-full border border-accent/25 bg-accent/[0.06] px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-accent">no diário</span>`
-              : isRecommended(movie.tmdbId)
-                ? `<span class="shrink-0 rounded-full border border-light/20 px-2 py-1 text-[8px] uppercase tracking-[0.14em] text-light/70">indicado</span>`
-                : `<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-panel/35 text-zinc-400">
-                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-                   </span>`
-          }
-        </button>`,
-    )
+          ${indicator}
+        </button>`;
+    })
     .join('');
 
   showSearchPanel(`
@@ -3129,7 +3141,7 @@ function renderSearchResults(results) {
     </div>
     <div class="max-h-[min(430px,60vh)] overflow-y-auto p-2">${rows}</div>
     <p class="border-t border-panel/20 px-4 py-2.5 text-center text-[9px] uppercase tracking-[0.14em] text-zinc-400/60">
-      escolha um filme para abrir as notas
+      escolha um título para abrir a ficha
     </p>`);
 }
 
@@ -3250,9 +3262,12 @@ els.searchPanel.addEventListener('click', (event) => {
 
   if (result) {
     const movieId = Number(result.dataset.searchResult);
+    const mediaType = result.dataset.searchMedia || 'movie';
     resetSearch();
     els.searchInput.blur();
-    openMovie(movieId, els.searchInput);
+    // Só séries precisam do contexto de mídia p/ a rota consultar /tv/:id;
+    // filmes seguem sem listContext (comportamento original).
+    openMovie(movieId, els.searchInput, mediaType === 'tv' ? { mediaType } : null);
     return;
   }
 
@@ -3637,7 +3652,9 @@ function starButtons(rating) {
 }
 
 function listRemoveActionMarkup() {
-  if (!state.listItemContext) return '';
+  // Só existe "remover da lista" quando a ficha foi aberta a partir de um item
+  // de lista real (com listId). Séries abertas da busca principal são só de consulta.
+  if (!state.listItemContext?.listId) return '';
 
   return `
     <button
