@@ -5048,6 +5048,7 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
 
   els.modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
+  stopHeroVideo();
   renderModalLoading();
 
   const closeButton = els.modal.querySelector('[data-close-modal-button]');
@@ -5087,8 +5088,42 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
 
 let heroMuted = true;
 
+const HERO_TRAILER_SECONDS = 35;
+
 function heroCarouselEl() {
   return els.modal.querySelector('[data-hero-carousel]');
+}
+
+function heroVideoEl() {
+  return els.modal.querySelector('[data-hero-video]');
+}
+
+function stopHeroVideo() {
+  const video = heroVideoEl();
+  if (!video) return;
+
+  video.pause();
+
+  try {
+    video.currentTime = 0;
+  } catch {
+    // Metadata ainda não carregou; o próximo play já começa do zero.
+  }
+}
+
+function syncHeroVideo(index) {
+  const video = heroVideoEl();
+  if (!video) return;
+
+  if (index === 0) {
+    if (video.paused) {
+      video.currentTime = 0;
+      video.play?.().catch(() => {});
+    }
+    return;
+  }
+
+  stopHeroVideo();
 }
 
 function heroSlideIndex() {
@@ -5110,6 +5145,8 @@ function updateHeroUi() {
 
   const controls = els.modal.querySelector('[data-hero-controls]');
   if (controls) controls.classList.toggle('hidden', index !== 0);
+
+  syncHeroVideo(index);
 }
 
 function initHeroCarousel() {
@@ -5123,6 +5160,9 @@ function initHeroCarousel() {
     video.muted = true;
     // Alguns navegadores ignoram o atributo autoplay e exigem play() explícito.
     video.play?.().catch(() => {});
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime >= HERO_TRAILER_SECONDS) video.currentTime = 0;
+    });
   }
 
   updateHeroUi();
@@ -5197,6 +5237,7 @@ function closeLightbox() {
 }
 
 function closeModal() {
+  stopHeroVideo();
   closeLightbox();
   state.modalAbort?.abort();
   state.modalAbort = null;
