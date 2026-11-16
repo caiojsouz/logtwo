@@ -73,7 +73,7 @@ function parsePosterPath(rawPath) {
   return posterPath;
 }
 
-function serializeItem(item) {
+function serializeItem(item, owner = {}) {
   return {
     id: item.id,
     listId: item.list_id,
@@ -83,17 +83,21 @@ function serializeItem(item) {
     posterPath: item.poster_path || null,
     posterUrl: imageUrl(item.poster_path, 'w342'),
     addedAt: item.added_at,
+    addedBy: owner.id ?? null,
+    addedByName: owner.name ?? null,
   };
 }
 
 function serializeList(list, items = []) {
+  const owner = { id: list.user_id, name: list.owner_name || null };
+
   return {
     id: list.id,
     userId: list.user_id,
     ownerName: list.owner_name || null,
     title: list.title,
     createdAt: list.created_at,
-    items: items.map(serializeItem),
+    items: items.map((item) => serializeItem(item, owner)),
   };
 }
 
@@ -239,7 +243,7 @@ router.post(
       [listId, tmdbId, mediaType],
     );
 
-    res.status(201).json({ item: serializeItem(item) });
+    res.status(201).json({ item: serializeItem(item, { id: req.user.id, name: req.user.name }) });
   }),
 );
 

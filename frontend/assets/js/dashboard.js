@@ -373,6 +373,13 @@ function maximizeIcon() {
     </svg>`;
 }
 
+function chevronIcon(direction) {
+  return `
+    <svg class="h-4 w-4 ${direction === 'left' ? 'rotate-180' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 5l7 7-7 7"></path>
+    </svg>`;
+}
+
 function heroVideoSlide(appleTrailerUrl) {
   const safeUrl = escapeHtml(appleTrailerUrl);
 
@@ -404,8 +411,9 @@ function heroImageSlide(path) {
         alt="Cena da obra"
         loading="lazy"
         decoding="async"
+        draggable="false"
         data-gallery-image="${url}"
-        class="h-full w-full cursor-zoom-in object-cover"
+        class="h-full w-full cursor-zoom-in select-none object-cover"
       />
     </div>`;
 }
@@ -422,7 +430,7 @@ function heroCarouselMarkup(movie) {
 
   return `
     <div class="relative aspect-video w-full overflow-hidden rounded-t-[26px] bg-zinc-950 sm:rounded-t-[30px]" data-hero>
-      <div data-hero-carousel class="no-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain">
+      <div data-hero-carousel class="no-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain select-none">
         ${slides.join('')}
       </div>
 
@@ -461,7 +469,19 @@ function heroCarouselMarkup(movie) {
                    ></button>`,
                  )
                  .join('')}
-             </div>`
+             </div>
+             <button
+               type="button"
+               data-hero-prev
+               aria-label="Slide anterior"
+               class="invisible absolute left-3 top-1/2 z-20 hidden -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700/50 bg-zinc-900/60 p-2 text-zinc-100 backdrop-blur-md transition hover:border-accent/50 hover:text-accent sm:flex"
+             >${chevronIcon('left')}</button>
+             <button
+               type="button"
+               data-hero-next
+               aria-label="Próximo slide"
+               class="absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 items-center justify-center rounded-full border border-zinc-700/50 bg-zinc-900/60 p-2 text-zinc-100 backdrop-blur-md transition hover:border-accent/50 hover:text-accent sm:flex"
+             >${chevronIcon('right')}</button>`
           : ''
       }
     </div>`;
@@ -2213,6 +2233,8 @@ function openListItem(listId, itemId, trigger) {
     listId: list.id,
     itemId: item.id,
     mediaType: item.mediaType || 'movie',
+    addedBy: item.addedBy ?? list.userId,
+    addedByName: item.addedByName ?? list.ownerName,
   });
 }
 
@@ -2257,7 +2279,8 @@ async function removeFromListModal() {
   if (!context || state.listBusy) return;
 
   const list = state.lists.find((item) => item.id === context.listId);
-  if (!list || list.userId !== state.me.id) return;
+  const addedBy = context.addedBy ?? list?.userId ?? null;
+  if (!list || addedBy !== state.me.id) return;
 
   state.listBusy = true;
   updateModalActions();
@@ -3654,7 +3677,20 @@ function starButtons(rating) {
 function listRemoveActionMarkup() {
   // Só existe "remover da lista" quando a ficha foi aberta a partir de um item
   // de lista real (com listId). Séries abertas da busca principal são só de consulta.
-  if (!state.listItemContext?.listId) return '';
+  const context = state.listItemContext;
+  if (!context?.listId) return '';
+
+  const list = state.lists.find((entry) => entry.id === context.listId);
+  const addedBy = context.addedBy ?? list?.userId ?? null;
+
+  if (addedBy !== state.me?.id) {
+    const ownerName = context.addedByName || list?.ownerName || 'sua dupla';
+
+    return `
+      <p class="inline-flex items-center gap-1.5 rounded-full border border-panel/25 bg-panel/10 px-3.5 py-2 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+        Adicionado por <span class="font-semibold text-zinc-200">${escapeHtml(firstName(ownerName))}</span>
+      </p>`;
+  }
 
   return `
     <button
@@ -5048,6 +5084,7 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
 
   els.modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
+  endHeroDrag();
   stopHeroVideo();
   renderModalLoading();
 
@@ -5087,11 +5124,17 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
 }
 
 let heroMuted = true;
+let heroDrag = null;
+let heroDragEndedAt = 0;
 
 const HERO_TRAILER_SECONDS = 35;
 
 function heroCarouselEl() {
   return els.modal.querySelector('[data-hero-carousel]');
+}
+
+function heroSlideCount() {
+  return els.modal.querySelectorAll('[data-hero-slide]').length;
 }
 
 function heroVideoEl() {
@@ -5126,6 +5169,50 @@ function syncHeroVideo(index) {
   stopHeroVideo();
 }
 
+function endHeroDrag() {
+  if (!heroDrag) return;
+
+  if (heroDrag.carousel.isConnected) {
+    heroDrag.carousel.style.scrollSnapType = heroDrag.scrollSnap;
+  }
+
+  if (heroDrag.moved) heroDragEndedAt = performance.now();
+  heroDrag = null;
+}
+
+function initHeroDrag(carousel) {
+  carousel.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+
+    heroDrag = {
+      carousel,
+      startX: event.clientX,
+      startScroll: carousel.scrollLeft,
+      moved: false,
+      scrollSnap: carousel.style.scrollSnapType,
+    };
+    carousel.style.scrollSnapType = 'none';
+  });
+}
+
+document.addEventListener(
+  'pointermove',
+  (event) => {
+    if (!heroDrag) return;
+
+    const delta = event.clientX - heroDrag.startX;
+    if (!heroDrag.moved && Math.abs(delta) < 8) return;
+
+    heroDrag.moved = true;
+    event.preventDefault();
+    heroDrag.carousel.scrollLeft = heroDrag.startScroll - delta;
+  },
+  { passive: false },
+);
+
+document.addEventListener('pointerup', endHeroDrag);
+document.addEventListener('pointercancel', endHeroDrag);
+
 function heroSlideIndex() {
   const carousel = heroCarouselEl();
   if (!carousel) return 0;
@@ -5146,14 +5233,24 @@ function updateHeroUi() {
   const controls = els.modal.querySelector('[data-hero-controls]');
   if (controls) controls.classList.toggle('hidden', index !== 0);
 
+  const total = heroSlideCount();
+  const prev = els.modal.querySelector('[data-hero-prev]');
+  const next = els.modal.querySelector('[data-hero-next]');
+  if (prev) prev.classList.toggle('invisible', index <= 0);
+  if (next) next.classList.toggle('invisible', index >= total - 1);
+
   syncHeroVideo(index);
 }
 
 function initHeroCarousel() {
   heroMuted = true;
+  heroDrag = null;
+  heroDragEndedAt = 0;
+
   const carousel = heroCarouselEl();
   if (!carousel) return;
   carousel.addEventListener('scroll', updateHeroUi, { passive: true });
+  initHeroDrag(carousel);
 
   const video = els.modal.querySelector('[data-hero-video]');
   if (video) {
@@ -5237,6 +5334,7 @@ function closeLightbox() {
 }
 
 function closeModal() {
+  endHeroDrag();
   stopHeroVideo();
   closeLightbox();
   state.modalAbort?.abort();
@@ -5279,6 +5377,16 @@ els.modal.addEventListener('click', (event) => {
     return;
   }
 
+  if (event.target.closest('[data-hero-prev]')) {
+    goToHeroSlide(Math.max(0, heroSlideIndex() - 1));
+    return;
+  }
+
+  if (event.target.closest('[data-hero-next]')) {
+    goToHeroSlide(Math.min(heroSlideCount() - 1, heroSlideIndex() + 1));
+    return;
+  }
+
   const heroDot = event.target.closest('[data-hero-dot]');
 
   if (heroDot) {
@@ -5289,6 +5397,8 @@ els.modal.addEventListener('click', (event) => {
   const galleryImage = event.target.closest('[data-gallery-image]');
 
   if (galleryImage) {
+    // Arrastar o carrossel no PC não pode abrir a imagem em tela cheia.
+    if (heroDrag?.moved || performance.now() - heroDragEndedAt < 350) return;
     openLightbox(galleryImage.dataset.galleryImage);
     return;
   }
