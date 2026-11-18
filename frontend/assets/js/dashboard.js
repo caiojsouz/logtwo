@@ -226,6 +226,7 @@ const els = {
   profileListCreate: document.querySelector('#profile-list-create'),
   rouletteButton: document.querySelector('#watchlist-roulette-btn'),
   rouletteModal: document.querySelector('#roulette-modal'),
+  roulettePosterButton: document.querySelector('#roulette-poster-button'),
   roulettePoster: document.querySelector('#roulette-poster'),
   rouletteMovieTitle: document.querySelector('#roulette-movie-title'),
   rouletteMovieMeta: document.querySelector('#roulette-movie-meta'),
@@ -1264,12 +1265,12 @@ function roulettePosterMarkup(movie) {
   }
 
   return `
-    <div class="poster-sheen flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center">
+    <span class="poster-sheen flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center">
       <span class="text-accent/50">${FILM_ICON}</span>
       <span class="line-clamp-4 font-display text-lg leading-tight text-zinc-100/75">
         ${escapeHtml(movie.title)}
       </span>
-    </div>`;
+    </span>`;
 }
 
 function setRouletteFrame(movie, { final = false } = {}) {
@@ -1277,6 +1278,9 @@ function setRouletteFrame(movie, { final = false } = {}) {
 
   els.roulettePoster.innerHTML = roulettePosterMarkup(movie);
   els.roulettePoster.classList.toggle('roulette-winner', final);
+  els.roulettePosterButton.disabled = !final;
+  els.roulettePosterButton.setAttribute('aria-label', `Ver detalhes de ${movie.title || 'obra sorteada'}`);
+  els.rouletteMovieTitle.disabled = !final;
   els.rouletteMovieTitle.textContent = movie.title || '';
   els.rouletteMovieTitle.title = movie.title || '';
 
@@ -1363,6 +1367,7 @@ function closeRoulette() {
   }
 
   state.rouletteWinner = null;
+  els.rouletteModal.inert = false;
   els.rouletteModal.classList.add('hidden');
 
   if (els.modal.classList.contains('hidden')) {
@@ -3621,6 +3626,14 @@ on(els.discoverSearch, 'keydown', (event) => {
 });
 
 on(els.rouletteButton, 'click', openRoulette);
+for (const button of [els.roulettePosterButton, els.rouletteMovieTitle]) {
+  on(button, 'click', () => {
+    const winner = state.rouletteWinner;
+    if (!winner) return;
+    openMovie(winner.tmdbId, button, { mediaType: winner.mediaType || 'movie' });
+    els.rouletteModal.inert = true;
+  });
+}
 on(els.rouletteModal, 'click', (event) => {
   if (event.target.closest('[data-close-roulette]')) closeRoulette();
 });
@@ -3679,6 +3692,7 @@ function renderModalLoading() {
 }
 
 function renderModalError(message) {
+  const restoreFocus = els.modal.contains(document.activeElement);
   els.modalContent.innerHTML = `
     <div class="relative px-6 py-16 text-center">
       ${modalCloseButton()}
@@ -3691,6 +3705,7 @@ function renderModalError(message) {
         Voltar para a estante
       </button>
     </div>`;
+  if (restoreFocus) els.modal.querySelector('[data-close-modal-button]')?.focus();
 }
 
 function starButtons(rating) {
@@ -4183,6 +4198,7 @@ function renderModal() {
   const movie = state.activeMovie;
   if (!movie) return;
 
+  const restoreFocus = els.modal.contains(document.activeElement);
   const reviews = movie.reviews || [];
   const ownReview = reviews.find((review) => review.userId === state.me.id) || null;
   const partner = state.partner || state.members.find((member) => member.id !== state.me.id);
@@ -4390,6 +4406,9 @@ function renderModal() {
 
   renderListPicker();
   initHeroCarousel();
+  if (restoreFocus && !els.modal.contains(document.activeElement)) {
+    els.modal.querySelector('[data-close-modal-button]')?.focus();
+  }
 }
 
 function paintStars(rating, preview = 0) {
@@ -5515,7 +5534,9 @@ function closeModal() {
   els.modal.classList.add('hidden');
 
   const listModalOpen = els.listModal && !els.listModal.classList.contains('hidden');
-  if (!listModalOpen) document.body.classList.remove('modal-open');
+  const rouletteOpen = !els.rouletteModal.classList.contains('hidden');
+  if (rouletteOpen) els.rouletteModal.inert = false;
+  if (!listModalOpen && !rouletteOpen) document.body.classList.remove('modal-open');
 
   const trigger = state.modalTrigger;
   state.modalTrigger = null;
