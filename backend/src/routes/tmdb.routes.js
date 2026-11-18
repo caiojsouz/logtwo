@@ -2,6 +2,8 @@ import express from 'express';
 import { AppError, asyncHandler } from '../lib/errors.js';
 import {
   discoverTitles,
+  getTvDetails,
+  getTvSeasonEpisodes,
   normalizeDiscoverFilter,
   normalizePage,
   searchTitles,
@@ -13,6 +15,41 @@ import { searchLimiter } from '../middleware/rateLimits.js';
 const router = express.Router();
 
 router.use(requireAuth, requireActiveDiary);
+
+function parseIntegerParam(value, minimum, message) {
+  if (typeof value !== 'string' || !value || /[^0-9]/.test(value)) {
+    throw new AppError(400, message);
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new AppError(400, message);
+  }
+
+  return parsed;
+}
+
+router.get(
+  '/tv/:id',
+  asyncHandler(async (req, res) => {
+    const id = parseIntegerParam(req.params.id, 1, 'Série inválida.');
+    const details = await getTvDetails(id);
+
+    res.json(details);
+  }),
+);
+
+router.get(
+  '/tv/:id/season/:season_number',
+  asyncHandler(async (req, res) => {
+    const id = parseIntegerParam(req.params.id, 1, 'Série inválida.');
+    const seasonNumber = parseIntegerParam(req.params.season_number, 0, 'Temporada inválida.');
+    const episodes = await getTvSeasonEpisodes(id, seasonNumber);
+
+    res.json({ episodes });
+  }),
+);
 
 router.get(
   '/discover',

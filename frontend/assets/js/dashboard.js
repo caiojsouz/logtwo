@@ -46,6 +46,8 @@ const state = {
   searchAbort: null,
   modalAbort: null,
   activeMovie: null,
+  episodeAbort: null,
+  episodeSeason: null,
   draftRating: 0,
   modalTrigger: null,
   isSaving: false,
@@ -4194,6 +4196,90 @@ async function clearSoundtrack() {
   await saveSoundtrack();
 }
 
+function episodesSectionMarkup(movie) {
+  const seasons = Array.isArray(movie.seasons) ? movie.seasons : [];
+
+  return `
+    <section class="mt-6 border-t border-zinc-800 pt-5" aria-labelledby="episodes-title">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 id="episodes-title" class="font-display text-2xl text-zinc-100">Episódios</h3>
+        ${seasons.length ? `
+          <label for="episode-season" class="sr-only">Selecionar temporada</label>
+          <select id="episode-season" data-episode-season class="max-w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100">
+            ${seasons.map((season) => `
+              <option value="${escapeHtml(season.season_number)}" ${season.season_number === state.episodeSeason ? 'selected' : ''}>
+                ${season.season_number === 0 ? 'Especiais / OVAs' : `Temporada ${escapeHtml(season.season_number)}`}
+              </option>`).join('')}
+          </select>` : ''}
+      </div>
+      <div data-episode-list aria-live="polite" class="mt-3 flex max-h-96 flex-col gap-3 overflow-y-auto pr-1">
+        ${seasons.length ? '' : '<p class="text-xs text-zinc-400">Nenhuma temporada disponível.</p>'}
+      </div>
+    </section>`;
+}
+
+function episodeMarkup(episode, movie) {
+  const image = episode.still_path
+    ? `https://image.tmdb.org/t/p/w300${episode.still_path}`
+    : movie.backdropUrl;
+  const runtime = Number(episode.runtime);
+  const title = episode.name || `Episódio ${episode.episode_number}`;
+  const overview = String(episode.overview || '').trim() || 'Sinopse não disponível';
+
+  return `
+    <details data-episode-card class="group rounded-xl border border-zinc-800 bg-zinc-950/50 transition hover:border-zinc-700">
+      <summary class="flex cursor-pointer list-none items-start gap-3 p-2 [&::-webkit-details-marker]:hidden">
+        <span class="relative block aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-zinc-900 sm:w-40">
+          ${image
+            ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" class="h-full w-full object-cover" />`
+            : `<span class="flex h-full items-center justify-center text-zinc-600">${FILM_ICON}</span>`}
+          ${Number.isFinite(runtime) && runtime > 0 ? `<span class="absolute bottom-1 right-1 rounded bg-zinc-950/85 px-1.5 py-0.5 text-[10px] text-zinc-100">${runtime}m</span>` : ''}
+        </span>
+        <span class="min-w-0 flex-1 py-0.5">
+          <span class="block break-words text-sm font-medium text-zinc-100">${escapeHtml(episode.episode_number)}. ${escapeHtml(title)}</span>
+          <span class="mt-1 break-words text-xs leading-relaxed text-zinc-400 line-clamp-2 sm:line-clamp-3 group-open:line-clamp-none sm:group-open:line-clamp-none">${escapeHtml(overview)}</span>
+        </span>
+      </summary>
+    </details>`;
+}
+
+async function loadSeasonEpisodes(seasonNumber) {
+  const movie = state.activeMovie;
+  if (!movie || movie.mediaType !== 'tv') return;
+
+  state.episodeAbort?.abort();
+  const controller = new AbortController();
+  state.episodeAbort = controller;
+  state.episodeSeason = seasonNumber;
+  const container = els.modal.querySelector('[data-episode-list]');
+  if (!container) return;
+
+  container.setAttribute('aria-busy', 'true');
+  container.innerHTML = Array.from({ length: 3 }, () => `
+    <div class="flex gap-3 rounded-xl border border-zinc-800 p-2" aria-hidden="true">
+      <div class="aspect-video w-32 shrink-0 animate-pulse rounded-lg bg-zinc-900 sm:w-40"></div>
+      <div class="flex-1 space-y-2 py-1"><div class="h-3 w-3/4 animate-pulse rounded bg-zinc-800"></div><div class="h-3 w-full animate-pulse rounded bg-zinc-900"></div></div>
+    </div>`).join('');
+
+  try {
+    const data = await api(`/api/tmdb/tv/${movie.tmdbId}/season/${seasonNumber}`, { signal: controller.signal });
+    if (state.episodeAbort !== controller || state.activeMovie !== movie || !container.isConnected) return;
+
+    const episodes = Array.isArray(data.episodes) ? data.episodes : [];
+    container.innerHTML = episodes.length
+      ? episodes.map((episode) => episodeMarkup(episode, movie)).join('')
+      : '<p class="text-xs text-zinc-400">Nenhum episódio disponível nesta temporada.</p>';
+  } catch (error) {
+    if (error.name === 'AbortError' || state.episodeAbort !== controller || state.activeMovie !== movie || !container.isConnected) return;
+    container.innerHTML = `<p class="text-xs text-zinc-400">Não foi possível carregar os episódios.</p><button type="button" data-episode-retry class="self-start text-xs text-accent underline">Tentar novamente</button>`;
+  } finally {
+    if (state.episodeAbort === controller) {
+      state.episodeAbort = null;
+      container.removeAttribute('aria-busy');
+    }
+  }
+}
+
 function renderModal() {
   const movie = state.activeMovie;
   if (!movie) return;
@@ -4377,6 +4463,7 @@ function renderModal() {
         ${escapeHtml(movie.overview || 'Sem sinopse disponível no TMDB.')}
       </p>
 
+      ${isTv ? episodesSectionMarkup(movie) : ''}
       ${providersMarkup(movie.providers)}
 
       <div class="mt-5 flex flex-wrap items-center gap-2" data-modal-actions>
@@ -5253,6 +5340,9 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
   state.modalTrigger = trigger;
   state.listItemContext = listContext;
   state.activeMovie = null;
+  state.episodeAbort?.abort();
+  state.episodeAbort = null;
+  state.episodeSeason = null;
   state.draftRating = 0;
   state.isSaving = false;
   state.soundtrackAbort?.abort();
@@ -5290,7 +5380,14 @@ function openMovie(movieId, trigger = document.activeElement, listContext = null
       state.activeMovie = data.movie;
       const ownReview = data.movie.reviews.find((review) => review.userId === state.me.id);
       state.draftRating = ownReview?.rating || 0;
+      if (data.movie.mediaType === 'tv' && Array.isArray(data.movie.seasons)) {
+        const seasons = data.movie.seasons;
+        state.episodeSeason = (seasons.find((season) => season.season_number === 1)
+          || seasons.find((season) => season.season_number > 0)
+          || seasons[0])?.season_number ?? null;
+      }
       renderModal();
+      if (state.episodeSeason !== null) loadSeasonEpisodes(state.episodeSeason);
     })
     .catch((error) => {
       if (error.name === 'AbortError') return;
@@ -5525,6 +5622,9 @@ function closeModal() {
   state.soundtrackAbort?.abort();
   state.soundtrackAbort = null;
   state.soundtrackResults = [];
+  state.episodeAbort?.abort();
+  state.episodeAbort = null;
+  state.episodeSeason = null;
   state.activeMovie = null;
   state.listItemContext = null;
   state.isSaving = false;
@@ -5637,6 +5737,11 @@ els.modal.addEventListener('click', (event) => {
     return;
   }
 
+  if (event.target.closest('[data-episode-retry]')) {
+    loadSeasonEpisodes(state.episodeSeason);
+    return;
+  }
+
   if (handleSongPickerClick(event, 'soundtrack')) return;
 
   const soundtrackResult = event.target.closest('[data-soundtrack-result]');
@@ -5659,6 +5764,12 @@ els.modal.addEventListener('click', (event) => {
 
   if (saveButton) {
     saveReview();
+  }
+});
+
+els.modal.addEventListener('change', (event) => {
+  if (event.target.matches('[data-episode-season]')) {
+    loadSeasonEpisodes(Number(event.target.value));
   }
 });
 
@@ -5697,7 +5808,7 @@ els.modal.addEventListener('mouseout', (event) => {
 els.modal.addEventListener('keydown', (event) => {
   if (event.key !== 'Tab') return;
 
-  const focusable = [...els.modal.querySelectorAll('button:not([disabled]), textarea, input, a[href]')].filter(
+  const focusable = [...els.modal.querySelectorAll('button:not([disabled]), textarea, input, select:not([disabled]), summary, a[href]')].filter(
     (element) => element.offsetParent !== null,
   );
 

@@ -241,7 +241,35 @@ export async function getTvDetails(tmdbId) {
     overview: data.overview || '',
     genres: (data.genres || []).map((genre) => genre.name),
     voteAverage: typeof data.vote_average === 'number' ? data.vote_average : null,
+    seasons: (Array.isArray(data.seasons) ? data.seasons : [])
+      .filter((season) => Number.isSafeInteger(season?.season_number) && season.season_number >= 0)
+      .map((season) => ({
+        id: season.id ?? null,
+        season_number: season.season_number,
+        name: season.name || '',
+        episode_count: season.episode_count ?? 0,
+        air_date: season.air_date || null,
+      }))
+      .sort((a, b) => {
+        if (a.season_number === 0) return b.season_number === 0 ? 0 : 1;
+        if (b.season_number === 0) return -1;
+        return a.season_number - b.season_number;
+      }),
   };
+}
+
+export async function getTvSeasonEpisodes(tmdbId, seasonNumber) {
+  const data = await request(`/tv/${tmdbId}/season/${seasonNumber}`, { language: 'pt-BR' });
+
+  return (Array.isArray(data.episodes) ? data.episodes : []).map((episode) => ({
+    id: episode.id ?? null,
+    episode_number: episode.episode_number ?? null,
+    name: episode.name || '',
+    overview: episode.overview || '',
+    still_path: episode.still_path || null,
+    runtime: toRuntime(episode.runtime),
+    air_date: episode.air_date || null,
+  }));
 }
 
 function pickBackdrops(images, limit = 8) {
