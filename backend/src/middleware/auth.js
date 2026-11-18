@@ -19,7 +19,9 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   }
 
   const user = await one(
-    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url,
+            profile_song_title, profile_song_track_id, profile_song_artist_name,
+            profile_song_start_time, profile_song_end_time, created_at
        FROM users
       WHERE id = ?`,
     [userId],

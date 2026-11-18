@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS users (
   profile_song_audio_url TEXT,
   profile_song_cover_url TEXT,
   profile_song_title TEXT,
+  -- Afinidade BLOB preserva IDs numéricos e textuais sem conversão.
+  profile_song_track_id BLOB,
+  profile_song_artist_name TEXT,
+  profile_song_start_time REAL NOT NULL DEFAULT 0,
+  profile_song_end_time REAL NOT NULL DEFAULT 30,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -41,6 +46,11 @@ CREATE TABLE IF NOT EXISTS movies (
   vote_average REAL,
   song_title TEXT,
   song_audio_url TEXT,
+  song_cover_url TEXT,
+  song_track_id BLOB,
+  song_artist_name TEXT,
+  song_start_time REAL NOT NULL DEFAULT 0,
+  song_end_time REAL NOT NULL DEFAULT 30,
   watch_providers TEXT,
   providers_cached_at TEXT,
   cached_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))

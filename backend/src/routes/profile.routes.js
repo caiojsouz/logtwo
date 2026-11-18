@@ -41,7 +41,7 @@ function parseSongUrl(rawValue, label) {
   return value;
 }
 
-function parseSongTitle(rawValue) {
+function parseSongText(rawValue, label) {
   const value = String(rawValue ?? '')
     .trim()
     .replace(/\s+/g, ' ');
@@ -49,10 +49,29 @@ function parseSongTitle(rawValue) {
   if (!value) return null;
 
   if (value.length > MAX_SONG_TITLE_LENGTH) {
-    throw new AppError(400, 'O título da música é longo demais.');
+    throw new AppError(400, `${label} é longo demais.`);
   }
 
   return value;
+}
+
+function parseTrackId(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+  if (typeof rawValue === 'string' && rawValue.trim().length <= MAX_SONG_TITLE_LENGTH) {
+    return rawValue.trim() || null;
+  }
+  throw new AppError(400, 'Identificador da música inválido.');
+}
+
+function validateSongTimes(start, end) {
+  if (
+    typeof start !== 'number' || !Number.isFinite(start) ||
+    typeof end !== 'number' || !Number.isFinite(end) ||
+    start < 0 || start >= end || end > 30
+  ) {
+    throw new AppError(400, 'O trecho deve ter tempos numéricos com 0 ≤ início < fim ≤ 30 segundos.');
+  }
 }
 
 function parseMovieId(rawId) {
@@ -84,7 +103,9 @@ async function listFavorites(userId) {
 
 async function loadUser(userId) {
   return one(
-    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+    `SELECT id, name, email, avatar_data, profile_song_audio_url, profile_song_cover_url,
+            profile_song_title, profile_song_track_id, profile_song_artist_name,
+            profile_song_start_time, profile_song_end_time, created_at
        FROM users
       WHERE id = ?`,
     [userId],
@@ -93,7 +114,9 @@ async function loadUser(userId) {
 
 async function loadPublicUser(userId) {
   return one(
-    `SELECT id, name, avatar_data, profile_song_audio_url, profile_song_cover_url, profile_song_title, created_at
+    `SELECT id, name, avatar_data, profile_song_audio_url, profile_song_cover_url,
+            profile_song_title, profile_song_track_id, profile_song_artist_name,
+            profile_song_start_time, profile_song_end_time, created_at
        FROM users
       WHERE id = ?`,
     [userId],
@@ -134,19 +157,25 @@ router.put(
   profileLimiter,
   asyncHandler(async (req, res) => {
     const body = req.body ?? {};
-    const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
-    const hasAudio = Object.prototype.hasOwnProperty.call(body, 'profileSongAudioUrl');
-    const hasCover = Object.prototype.hasOwnProperty.call(body, 'profileSongCoverUrl');
-    const hasTitle = Object.prototype.hasOwnProperty.call(body, 'profileSongTitle');
+    const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+    const songFields = [
+      ['profileSongAudioUrl', 'profile_song_audio_url', (value) => parseSongUrl(value, 'áudio da música')],
+      ['profileSongCoverUrl', 'profile_song_cover_url', (value) => parseSongUrl(value, 'capa da música')],
+      ['profileSongTitle', 'profile_song_title', (value) => parseSongText(value, 'O título da música')],
+      ['profileSongTrackId', 'profile_song_track_id', parseTrackId],
+      ['profileSongArtistName', 'profile_song_artist_name', (value) => parseSongText(value, 'O nome do artista')],
+    ];
+    const hasStart = has('profileSongStartTime');
+    const hasEnd = has('profileSongEndTime');
 
-    if (!hasName && !hasAudio && !hasCover && !hasTitle) {
+    if (!has('name') && !songFields.some(([key]) => has(key)) && !hasStart && !hasEnd) {
       throw new AppError(400, 'Nada para atualizar no perfil.');
     }
 
     const fields = [];
     const values = [];
 
-    if (hasName) {
+    if (has('name')) {
       const name = String(body.name ?? '')
         .trim()
         .replace(/\s+/g, ' ');
@@ -159,23 +188,43 @@ router.put(
       values.push(name);
     }
 
-    if (hasAudio) {
-      fields.push('profile_song_audio_url = ?');
-      values.push(parseSongUrl(body.profileSongAudioUrl, 'áudio da música'));
+    const songValues = new Map();
+    for (const [key, column, parse] of songFields) {
+      if (has(key)) songValues.set(column, parse(body[key]));
     }
 
-    if (hasCover) {
-      fields.push('profile_song_cover_url = ?');
-      values.push(parseSongUrl(body.profileSongCoverUrl, 'capa da música'));
+    const start = hasStart ? body.profileSongStartTime : (req.user.profile_song_start_time ?? 0);
+    const end = hasEnd ? body.profileSongEndTime : (req.user.profile_song_end_time ?? 30);
+    if (hasStart || hasEnd) validateSongTimes(start, end);
+
+    const removingSong = has('profileSongAudioUrl') && songValues.get('profile_song_audio_url') === null;
+    if (removingSong) {
+      for (const [, column] of songFields) songValues.set(column, null);
+      songValues.set('profile_song_start_time', 0);
+      songValues.set('profile_song_end_time', 30);
+    } else {
+      if (hasStart) songValues.set('profile_song_start_time', start);
+      if (hasEnd) songValues.set('profile_song_end_time', end);
     }
 
-    if (hasTitle) {
-      fields.push('profile_song_title = ?');
-      values.push(parseSongTitle(body.profileSongTitle));
+    for (const [column, value] of songValues) {
+      fields.push(`${column} = ?`);
+      values.push(value);
     }
 
     values.push(req.user.id);
-    await run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+    let timeGuard = '';
+    if ((hasStart || hasEnd) && !removingSong) {
+      // Valida também contra o valor atual no banco, caso outra requisição o tenha alterado.
+      timeGuard = ` AND COALESCE(?, profile_song_start_time, 0) >= 0
+                    AND COALESCE(?, profile_song_start_time, 0) < COALESCE(?, profile_song_end_time, 30)
+                    AND COALESCE(?, profile_song_end_time, 30) <= 30`;
+      values.push(hasStart ? start : null, hasStart ? start : null, hasEnd ? end : null, hasEnd ? end : null);
+    }
+    const result = await run(`UPDATE users SET ${fields.join(', ')} WHERE id = ?${timeGuard}`, values);
+    if (result.rowsAffected === 0 && timeGuard) {
+      throw new AppError(400, 'O trecho deve ter tempos numéricos com 0 ≤ início < fim ≤ 30 segundos.');
+    }
 
     const user = await loadUser(req.user.id);
     res.json({ user: serializeUser(user) });

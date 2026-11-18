@@ -7,6 +7,10 @@ export function serializeUser(user, { includeEmail = true } = {}) {
     profileSongAudioUrl: user.profile_song_audio_url || null,
     profileSongCoverUrl: user.profile_song_cover_url || null,
     profileSongTitle: user.profile_song_title || null,
+    profileSongTrackId: user.profile_song_track_id ?? null,
+    profileSongArtistName: user.profile_song_artist_name || null,
+    profileSongStartTime: user.profile_song_start_time ?? 0,
+    profileSongEndTime: user.profile_song_end_time ?? 30,
     createdAt: user.created_at,
   };
 }

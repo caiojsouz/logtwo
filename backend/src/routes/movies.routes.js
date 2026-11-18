@@ -23,6 +23,44 @@ const MAX_SONG_URL_LENGTH = 2048;
 
 router.use(requireAuth, requireActiveDiary);
 
+function parseSongUrl(rawValue, label) {
+  const value = String(rawValue ?? '').trim();
+  if (!value) return null;
+  if (value.length > MAX_SONG_URL_LENGTH) {
+    throw new AppError(400, `O link de ${label} é longo demais.`);
+  }
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new AppError(400, `Informe um link válido para ${label}.`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new AppError(400, `Use um link http(s) para ${label}.`);
+  }
+  return value;
+}
+
+function parseTrackId(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+  if (typeof rawValue === 'string' && rawValue.trim().length <= MAX_SONG_TITLE_LENGTH) {
+    return rawValue.trim() || null;
+  }
+  throw new AppError(400, 'Identificador da música inválido.');
+}
+
+function validateSongTimes(start, end) {
+  if (
+    typeof start !== 'number' || !Number.isFinite(start) ||
+    typeof end !== 'number' || !Number.isFinite(end) ||
+    start < 0 || start >= end || end > 30
+  ) {
+    throw new AppError(400, 'O trecho deve ter tempos numéricos com 0 ≤ início < fim ≤ 30 segundos.');
+  }
+}
+
 function parseMovieId(rawId) {
   if (!/^\d+$/.test(String(rawId))) {
     throw new AppError(400, 'Filme inválido.');
@@ -223,6 +261,11 @@ router.get(
           backdropUrl: imageUrl(details.backdropPath, 'w1280'),
           songTitle: null,
           songAudioUrl: null,
+          songCoverUrl: null,
+          songTrackId: null,
+          songArtistName: null,
+          songStartTime: 0,
+          songEndTime: 30,
           providers: watch.providers,
           appleTrailerUrl: extras.appleTrailerUrl,
           backdrops: extras.backdrops,
@@ -318,38 +361,23 @@ router.put(
   '/:id/soundtrack',
   asyncHandler(async (req, res) => {
     const movieId = parseMovieId(req.params.id);
-    const rawTitle = String(req.body?.songTitle ?? '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const rawUrl = String(req.body?.songAudioUrl ?? '').trim();
+    const body = req.body ?? {};
+    const rawTitle = String(body.songTitle ?? '').replace(/\s+/g, ' ').trim();
+    const rawArtist = String(body.songArtistName ?? '').replace(/\s+/g, ' ').trim();
+    const audioUrl = parseSongUrl(body.songAudioUrl, 'prévia');
+    const coverUrl = parseSongUrl(body.songCoverUrl, 'capa da música');
+    const trackId = parseTrackId(body.songTrackId);
+    const startTime = Object.prototype.hasOwnProperty.call(body, 'songStartTime') ? body.songStartTime : 0;
+    const endTime = Object.prototype.hasOwnProperty.call(body, 'songEndTime') ? body.songEndTime : 30;
 
-    let title = null;
-    let audioUrl = null;
-
-    if (rawUrl) {
-      if (rawUrl.length > MAX_SONG_URL_LENGTH) {
-        throw new AppError(400, 'O link da prévia é longo demais.');
-      }
-
-      let url;
-
-      try {
-        url = new URL(rawUrl);
-      } catch {
-        throw new AppError(400, 'Informe um link válido para a prévia.');
-      }
-
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        throw new AppError(400, 'Use um link http(s) para a prévia.');
-      }
-
-      if (rawTitle.length > MAX_SONG_TITLE_LENGTH) {
-        throw new AppError(400, 'O título da trilha é longo demais.');
-      }
-
-      audioUrl = rawUrl;
-      title = rawTitle || 'Trilha sonora';
-    } else if (rawTitle) {
+    validateSongTimes(startTime, endTime);
+    if (rawTitle.length > MAX_SONG_TITLE_LENGTH) {
+      throw new AppError(400, 'O título da trilha é longo demais.');
+    }
+    if (rawArtist.length > MAX_SONG_TITLE_LENGTH) {
+      throw new AppError(400, 'O nome do artista é longo demais.');
+    }
+    if (!audioUrl && rawTitle) {
       throw new AppError(400, 'Escolha uma faixa com prévia para salvar a trilha.');
     }
 
@@ -359,17 +387,29 @@ router.put(
       throw new AppError(404, 'Mídia não encontrada na base.');
     }
 
-    await run('UPDATE movies SET song_title = ?, song_audio_url = ? WHERE tmdb_id = ?', [
-      title,
-      audioUrl,
-      movieId,
-    ]);
+    const title = audioUrl ? (rawTitle || 'Trilha sonora') : null;
+    await run(
+      `UPDATE movies SET song_title = ?, song_audio_url = ?, song_cover_url = ?,
+              song_track_id = ?, song_artist_name = ?, song_start_time = ?, song_end_time = ?
+        WHERE tmdb_id = ?`,
+      [title, audioUrl, audioUrl ? coverUrl : null, audioUrl ? trackId : null,
+        audioUrl ? (rawArtist || null) : null, audioUrl ? startTime : 0, audioUrl ? endTime : 30, movieId],
+    );
 
     const updated = await one('SELECT * FROM movies WHERE tmdb_id = ?', [movieId]);
+    const movie = serializeMovie(updated);
 
     res.json({
-      soundtrack: { title, audioUrl },
-      movie: serializeMovie(updated),
+      soundtrack: {
+        title: movie.songTitle,
+        audioUrl: movie.songAudioUrl,
+        coverUrl: movie.songCoverUrl,
+        trackId: movie.songTrackId,
+        artistName: movie.songArtistName,
+        startTime: movie.songStartTime,
+        endTime: movie.songEndTime,
+      },
+      movie,
     });
   }),
 );

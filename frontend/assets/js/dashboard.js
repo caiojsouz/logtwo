@@ -37,6 +37,8 @@ const state = {
   songResults: [],
   songSearchAbort: null,
   songSaving: false,
+  songPreview: null,
+  songEditor: null,
   rouletteTimer: null,
   rouletteMovies: [],
   rouletteWinner: null,
@@ -92,7 +94,7 @@ const SPIN_CLASS = 'animate-[spin_4s_linear_infinite]';
 const ROULETTE_TICK_MS = 100;
 const ROULETTE_DURATION_MS = 3000;
 const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
-const ITUNES_LIMIT = 5;
+const ITUNES_LIMIT = 10;
 const DISCOVER_FILTERS = [
   { id: 'em_alta', label: 'Em Alta' },
   { id: 'anime', label: 'Animes' },
@@ -487,6 +489,23 @@ function heroCarouselMarkup(movie) {
     </div>`;
 }
 
+function loopSongSegment(audio, getSegment) {
+  const seekToStart = () => {
+    audio.currentTime = getSegment().start;
+  };
+
+  audio.addEventListener('timeupdate', () => {
+    const { start, end } = getSegment();
+    if (audio.currentTime >= end || audio.currentTime < start) audio.currentTime = start;
+  });
+  audio.addEventListener('ended', () => {
+    if (state.audio !== audio && state.trackAudio !== audio && state.songPreview?.audio !== audio) return;
+    seekToStart();
+    audio.play().catch(() => {});
+  });
+  seekToStart();
+}
+
 function songPlayButton(movie, className = '') {
   if (!movie?.songAudioUrl) return '';
 
@@ -511,9 +530,12 @@ function findPlayableSong(movieId) {
     (state.activeMovie?.tmdbId === movieId ? state.activeMovie : null);
   const event = state.timeline.find((item) => Number(item.movieId) === movieId);
 
+  const source = movie?.songAudioUrl ? movie : event;
   return {
-    audioUrl: movie?.songAudioUrl || event?.songAudioUrl || null,
-    title: movie?.songTitle || event?.songTitle || 'Trilha sonora',
+    audioUrl: source?.songAudioUrl || null,
+    title: source?.songTitle || 'Trilha sonora',
+    start: source?.songStartTime ?? 0,
+    end: source?.songEndTime ?? 30,
   };
 }
 
@@ -551,7 +573,12 @@ function toggleTrack(movieId) {
 
   if (state.trackAudio && state.trackPlayingId === movieId) {
     if (state.trackAudio.paused) {
-      state.trackAudio.play().catch(() => toast('Não foi possível tocar a prévia.', 'error'));
+      const audio = state.trackAudio;
+      audio.play().catch((error) => {
+        if (error?.name === 'AbortError' || state.trackAudio !== audio) return;
+        toast('Não foi possível tocar a prévia.', 'error');
+        stopTrack();
+      });
     } else {
       state.trackAudio.pause();
     }
@@ -561,22 +588,21 @@ function toggleTrack(movieId) {
   }
 
   stopTrack();
+  stopSong();
+  stopSongPreview();
 
   const audio = new Audio(song.audioUrl);
   audio.volume = 0.7;
+  loopSongSegment(audio, () => song);
 
-  audio.addEventListener('ended', () => {
-    state.trackAudio = null;
-    state.trackPlayingId = null;
-    updateTrackButtons();
-  });
   audio.addEventListener('pause', updateTrackButtons);
   audio.addEventListener('play', updateTrackButtons);
 
   state.trackAudio = audio;
   state.trackPlayingId = movieId;
 
-  audio.play().catch(() => {
+  audio.play().catch((error) => {
+    if (error?.name === 'AbortError' || state.trackAudio !== audio) return;
     toast('Não foi possível tocar a prévia da trilha.', 'error');
     stopTrack();
   });
@@ -1687,11 +1713,16 @@ function toggleProfileSong() {
   }
 
   stopSong();
+  stopTrack();
+  stopSongPreview();
 
   const audio = new Audio(profile.profileSongAudioUrl);
-  audio.loop = true;
   audio.preload = 'auto';
   audio.volume = 0.9;
+  loopSongSegment(audio, () => ({
+    start: profile.profileSongStartTime ?? 0,
+    end: profile.profileSongEndTime ?? 30,
+  }));
   state.audio = audio;
   state.audioProfileId = profile.id;
 
@@ -3471,8 +3502,12 @@ on(els.profileAvatarRemove, 'click', removeAvatar);
 on(els.profileNameForm, 'submit', saveProfileName);
 on(els.songSearchForm, 'submit', submitSongSearch);
 on(els.songSearchResults, 'click', (event) => {
+  if (handleSongPickerClick(event, 'profile')) return;
   const button = event.target.closest('[data-song-result]');
   if (button) selectSongResult(Number(button.dataset.songResult));
+});
+on(els.songSearchResults, 'input', (event) => {
+  if (event.target.matches('[data-song-time]')) updateSongSegment(event.target);
 });
 on(els.profileMusicDisc, 'click', toggleProfileSong);
 on(els.profileViewSelf, 'click', () => {
@@ -4006,34 +4041,12 @@ function renderSoundtrackResults(results) {
     return;
   }
 
-  container.innerHTML = results
-    .map((track, index) => {
-      const title = track.trackName || 'Faixa sem nome';
-      const artist = track.artistName || '';
-      const thumb = String(track.artworkUrl100 || '').trim();
-      const unavailable = !track.previewUrl;
-
-      return `
-        <button
-          type="button"
-          data-soundtrack-result="${index}"
-          ${unavailable ? 'disabled' : ''}
-          class="flex w-full items-center gap-2.5 border-b border-panel/20 p-2.5 text-left transition last:border-b-0 hover:bg-panel/15 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span class="h-9 w-9 shrink-0 overflow-hidden rounded-md bg-panel/20">
-            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />` : ''}
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12px] font-medium text-zinc-100">${escapeHtml(title)}</span>
-            <span class="mt-0.5 block truncate text-[9px] text-zinc-400">${escapeHtml(artist)}</span>
-          </span>
-          <span class="shrink-0 text-accent">${playIcons('h-3 w-3')}</span>
-        </button>`;
-    })
-    .join('');
+  container.innerHTML = songResultsMarkup(results, 'soundtrack');
 }
 
 async function searchMovieSoundtrack(term) {
+  if (state.songPreview?.context === 'soundtrack') stopSongPreview();
+  if (state.songEditor?.context === 'soundtrack') state.songEditor = null;
   state.soundtrackAbort?.abort();
   const controller = new AbortController();
   state.soundtrackAbort = controller;
@@ -4049,7 +4062,7 @@ async function searchMovieSoundtrack(term) {
     </div>`;
 
   try {
-    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&entity=song&limit=${ITUNES_LIMIT}`;
+    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&media=music&entity=song&country=br&limit=${ITUNES_LIMIT}`;
     const response = await fetch(url, { signal: controller.signal });
 
     if (!response.ok) {
@@ -4110,73 +4123,60 @@ function refreshSoundtrackSection() {
   updateTrackButtons();
 }
 
-async function saveSoundtrack(songTitle, songAudioUrl) {
+async function saveSoundtrack(track = null, segment = { start: 0, end: 30 }) {
   const movie = state.activeMovie;
   if (!movie || state.soundtrackSaving) return false;
 
   state.soundtrackSaving = true;
-
-  for (const button of els.modal.querySelectorAll('[data-soundtrack-result]')) {
-    button.disabled = true;
-  }
+  const saveButton = els.modal.querySelector('[data-song-editor-save]');
+  if (saveButton) saveButton.disabled = true;
+  stopSongPreview();
 
   try {
     const data = await api(`/api/movies/${movie.tmdbId}/soundtrack`, {
       method: 'PUT',
-      body: { songTitle, songAudioUrl },
+      body: {
+        songTitle: track ? songTitle(track) || 'Trilha sonora' : '',
+        songAudioUrl: track?.previewUrl || '',
+        songCoverUrl: track ? songArtwork(track) : null,
+        songTrackId: track?.trackId ?? null,
+        songArtistName: track?.artistName || null,
+        songStartTime: segment.start,
+        songEndTime: segment.end,
+      },
     });
 
-    if (!data?.soundtrack) {
-      console.error('[logtwo] Trilha salva sem confirmação do servidor.', data);
-      throw new Error('O servidor não confirmou a trilha sonora.');
-    }
-
+    if (!data?.movie) throw new Error('O servidor não confirmou a trilha sonora.');
     if (state.trackPlayingId === movie.tmdbId) stopTrack();
 
-    movie.songTitle = data.soundtrack.title;
-    movie.songAudioUrl = data.soundtrack.audioUrl;
-    refreshSoundtrackSection();
+    for (const field of ['songTitle', 'songAudioUrl', 'songCoverUrl', 'songTrackId', 'songArtistName', 'songStartTime', 'songEndTime']) {
+      movie[field] = data.movie[field];
+    }
+    if (state.activeMovie === movie) {
+      state.songEditor = null;
+      refreshSoundtrackSection();
+    }
     await syncDiaryState();
-    toast(songAudioUrl ? 'Trilha sonora salva.' : 'Trilha sonora removida.');
+    toast(track ? 'Trilha sonora salva.' : 'Trilha sonora removida.');
     return true;
   } catch (error) {
     toast(error.message, 'error');
-
-    if (state.soundtrackResults.length) {
-      renderSoundtrackResults(state.soundtrackResults);
-    }
-
     return false;
   } finally {
     state.soundtrackSaving = false;
+    if (saveButton?.isConnected) saveButton.disabled = false;
   }
 }
 
-async function selectSoundtrack(index) {
-  const track = state.soundtrackResults[index];
-
-  if (!track || state.soundtrackSaving) return;
-
-  const audioUrl = String(track.previewUrl || '').trim();
-
-  if (!audioUrl) {
-    toast('Essa faixa não tem prévia de áudio.', 'error');
-    return;
-  }
-
-  const title = [track.trackName, track.artistName]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' - ');
-
-  await saveSoundtrack(title || 'Trilha sonora', audioUrl);
+function selectSoundtrack(index) {
+  if (!state.soundtrackSaving) openSongEditor('soundtrack', index);
 }
 
 async function clearSoundtrack() {
   if (!state.activeMovie || state.soundtrackSaving) return;
   if (!window.confirm('Remover a trilha sonora deste filme?')) return;
 
-  await saveSoundtrack('', '');
+  await saveSoundtrack();
 }
 
 function renderModal() {
@@ -4828,7 +4828,199 @@ async function saveProfileName(event) {
   }
 }
 
+function songArtwork(track) {
+  return String(track.artworkUrl100 || '').trim().replace('100x100', '300x300');
+}
+
+function songTitle(track) {
+  return [track.trackName, track.artistName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+}
+
+function songResultsMarkup(results, context) {
+  const resultAttribute = context === 'profile' ? 'data-song-result' : 'data-soundtrack-result';
+
+  return results.map((track, index) => {
+    const title = track.trackName || 'Faixa sem nome';
+    const artist = track.artistName || '';
+    const thumb = songArtwork(track);
+    const unavailable = !track.previewUrl;
+
+    return `
+      <div class="flex items-center border-b border-panel/20 last:border-b-0">
+        <button type="button" ${resultAttribute}="${index}" ${unavailable ? 'disabled' : ''}
+          class="flex min-w-0 flex-1 items-center gap-3 p-3 text-left transition hover:bg-panel/15 disabled:cursor-not-allowed disabled:opacity-40">
+          <span class="h-11 w-11 shrink-0 overflow-hidden rounded-md bg-panel/20">
+            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />` : ''}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[12px] font-medium text-zinc-100">${escapeHtml(title)}</span>
+            <span class="mt-0.5 block truncate text-[10px] text-zinc-400">${escapeHtml(artist)}</span>
+          </span>
+        </button>
+        <button type="button" data-song-preview="${index}" data-song-context="${context}" data-song-title="${escapeHtml(title)}" ${unavailable ? 'disabled' : ''}
+          aria-label="Ouvir prévia de ${escapeHtml(title)}" aria-pressed="false"
+          class="mx-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/40 text-accent transition hover:bg-accent/15 disabled:opacity-40">▶</button>
+      </div>`;
+  }).join('');
+}
+
+function updateSongPreviewButtons() {
+  for (const button of document.querySelectorAll('[data-song-preview], [data-song-segment-preview]')) {
+    const preview = state.songPreview;
+    const isEditor = button.hasAttribute('data-song-segment-preview');
+    const active = Boolean(preview && !preview.audio.paused &&
+      preview.context === button.dataset.songContext &&
+      (isEditor ? preview.kind === 'segment' : preview.kind === 'list' && preview.index === Number(button.dataset.songPreview)));
+    button.setAttribute('aria-pressed', String(active));
+    if (isEditor) {
+      button.textContent = active ? 'Pausar trecho' : 'Ouvir trecho';
+    } else {
+      button.textContent = active ? '❚❚' : '▶';
+      button.setAttribute('aria-label', `${active ? 'Pausar' : 'Ouvir'} prévia de ${button.dataset.songTitle}`);
+    }
+  }
+}
+
+function stopSongPreview() {
+  const preview = state.songPreview;
+  state.songPreview = null;
+  if (preview) preview.audio.pause();
+  updateSongPreviewButtons();
+}
+
+function toggleSongPreview(context, index, kind = 'list') {
+  const editor = state.songEditor;
+  const track = kind === 'segment' ? editor?.track :
+    (context === 'profile' ? state.songResults[index] : state.soundtrackResults[index]);
+  if (!track?.previewUrl || (kind === 'segment' && editor?.context !== context)) return;
+
+  const current = state.songPreview;
+  if (current && current.context === context && current.index === index && current.kind === kind) {
+    if (current.audio.paused) {
+      current.audio.play().catch((error) => {
+        if (error?.name === 'AbortError' || state.songPreview !== current) return;
+        toast('Não foi possível tocar a prévia.', 'error');
+        stopSongPreview();
+      });
+    } else {
+      current.audio.pause();
+    }
+    updateSongPreviewButtons();
+    return;
+  }
+
+  stopSongPreview();
+  stopSong();
+  stopTrack();
+
+  const audio = new Audio(track.previewUrl);
+  const preview = { audio, context, index, kind };
+  state.songPreview = preview;
+  if (kind === 'segment') loopSongSegment(audio, () => ({ start: editor.start, end: editor.end }));
+  else audio.addEventListener('ended', () => {
+    if (state.songPreview === preview) stopSongPreview();
+  });
+  audio.addEventListener('play', updateSongPreviewButtons);
+  audio.addEventListener('pause', updateSongPreviewButtons);
+  audio.play().catch((error) => {
+    if (error?.name === 'AbortError' || state.songPreview !== preview) return;
+    toast('Não foi possível tocar a prévia.', 'error');
+    stopSongPreview();
+  });
+  updateSongPreviewButtons();
+}
+
+function songEditorContainer(context) {
+  return context === 'profile' ? els.songSearchResults : els.modal.querySelector('[data-soundtrack-results]');
+}
+
+function openSongEditor(context, index) {
+  const track = (context === 'profile' ? state.songResults : state.soundtrackResults)[index];
+  const container = songEditorContainer(context);
+  if (!track?.previewUrl || !container) return;
+
+  stopSongPreview();
+  state.songEditor = { context, index, track, start: 0, end: 30 };
+  container.innerHTML = `
+    <div class="space-y-4 p-4" data-song-editor>
+      <div>
+        <p class="micro-label">ajuste de trecho</p>
+        <p class="mt-2 text-sm font-medium text-zinc-100">${escapeHtml(track.trackName || 'Faixa sem nome')}</p>
+        <p class="mt-1 text-xs text-zinc-400">${escapeHtml(track.artistName || '')}</p>
+      </div>
+      <label class="block text-xs text-zinc-300">Início: <strong data-song-time-label="start">0s</strong>
+        <input type="range" min="0" max="29" step="1" value="0" data-song-time="start" class="mt-2 block w-full accent-accent" />
+      </label>
+      <label class="block text-xs text-zinc-300">Fim: <strong data-song-time-label="end">30s</strong>
+        <input type="range" min="1" max="30" step="1" value="30" data-song-time="end" class="mt-2 block w-full accent-accent" />
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" data-song-segment-preview data-song-context="${context}" aria-pressed="false" class="rounded-full border border-panel/50 px-4 py-2 text-xs text-zinc-100 hover:border-accent/50">Ouvir trecho</button>
+        <button type="button" data-song-editor-save class="rounded-full border border-accent/50 bg-accent/10 px-4 py-2 text-xs font-semibold text-accent hover:bg-accent/20">Salvar música</button>
+        <button type="button" data-song-editor-cancel class="rounded-full px-3 py-2 text-xs text-zinc-400 hover:text-zinc-100">Voltar</button>
+      </div>
+    </div>`;
+}
+
+function updateSongSegment(input) {
+  const editor = state.songEditor;
+  if (!editor || !input.closest('[data-song-editor]')) return;
+
+  editor[input.dataset.songTime] = Number(input.value);
+  if (editor.start >= editor.end) {
+    if (input.dataset.songTime === 'start') editor.end = editor.start + 1;
+    else editor.start = editor.end - 1;
+  }
+
+  const container = songEditorContainer(editor.context);
+  for (const part of ['start', 'end']) {
+    container.querySelector(`[data-song-time="${part}"]`).value = editor[part];
+    container.querySelector(`[data-song-time-label="${part}"]`).textContent = `${editor[part]}s`;
+  }
+
+  const preview = state.songPreview;
+  if (preview?.kind === 'segment' && preview.context === editor.context &&
+      (preview.audio.currentTime < editor.start || preview.audio.currentTime >= editor.end)) {
+    preview.audio.currentTime = editor.start;
+  }
+}
+
+function cancelSongEditor() {
+  const editor = state.songEditor;
+  if (!editor) return;
+  stopSongPreview();
+  state.songEditor = null;
+  if (editor.context === 'profile') renderSongResults(state.songResults);
+  else renderSoundtrackResults(state.soundtrackResults);
+}
+
+function handleSongPickerClick(event, context) {
+  const preview = event.target.closest('[data-song-preview]');
+  if (preview) {
+    toggleSongPreview(context, Number(preview.dataset.songPreview));
+    return true;
+  }
+  if (event.target.closest('[data-song-segment-preview]')) {
+    toggleSongPreview(context, state.songEditor?.index, 'segment');
+    return true;
+  }
+  if (event.target.closest('[data-song-editor-save]')) {
+    confirmSongEditor();
+    return true;
+  }
+  if (event.target.closest('[data-song-editor-cancel]')) {
+    cancelSongEditor();
+    return true;
+  }
+  return false;
+}
+
 function hideSongResults() {
+  if (state.songPreview?.context === 'profile') stopSongPreview();
+  if (state.songEditor?.context === 'profile') state.songEditor = null;
   state.songSearchAbort?.abort();
   state.songSearchAbort = null;
   state.songResults = [];
@@ -4852,38 +5044,13 @@ function renderSongResults(results) {
     return;
   }
 
-  els.songSearchResults.innerHTML = results
-    .map((track, index) => {
-      const title = track.trackName || 'Faixa sem nome';
-      const artist = track.artistName || '';
-      const thumb = String(track.artworkUrl100 || '').trim();
-      const unavailable = !track.previewUrl;
-
-      return `
-        <button
-          type="button"
-          data-song-result="${index}"
-          ${unavailable ? 'disabled' : ''}
-          class="flex w-full items-center gap-3 border-b border-panel/20 p-3 text-left transition last:border-b-0 hover:bg-panel/15 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span class="h-11 w-11 shrink-0 overflow-hidden rounded-md bg-panel/20">
-            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />` : ''}
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-[13px] font-medium text-zinc-100">${escapeHtml(title)}</span>
-            <span class="mt-0.5 block truncate text-[10px] text-zinc-400">${escapeHtml(artist)}</span>
-          </span>
-          <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path d="M8 5v14l11-7z"></path>
-          </svg>
-        </button>`;
-    })
-    .join('');
-
+  els.songSearchResults.innerHTML = songResultsMarkup(results, 'profile');
   els.songSearchResults.classList.remove('hidden');
 }
 
 async function searchSongs(term) {
+  if (state.songPreview?.context === 'profile') stopSongPreview();
+  if (state.songEditor?.context === 'profile') state.songEditor = null;
   state.songSearchAbort?.abort();
   const controller = new AbortController();
   state.songSearchAbort = controller;
@@ -4897,7 +5064,7 @@ async function searchSongs(term) {
   els.songSearchResults.classList.remove('hidden');
 
   try {
-    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&entity=song&limit=${ITUNES_LIMIT}`;
+    const url = `${ITUNES_SEARCH_URL}?term=${encodeURIComponent(term)}&media=music&entity=song&country=br&limit=${ITUNES_LIMIT}`;
     const response = await fetch(url, { signal: controller.signal });
 
     if (!response.ok) {
@@ -4941,61 +5108,51 @@ function submitSongSearch(event) {
   searchSongs(term);
 }
 
-async function selectSongResult(index) {
-  const track = state.songResults[index];
+function selectSongResult(index) {
+  if (!state.songSaving) openSongEditor('profile', index);
+}
 
-  if (!track || state.songSaving) return;
-
-  const audioUrl = String(track.previewUrl || '').trim();
-
-  if (!audioUrl) {
-    toast('Essa faixa não tem prévia de áudio.', 'error');
+async function confirmSongEditor() {
+  const editor = state.songEditor;
+  if (!editor) return;
+  if (editor.context === 'soundtrack') {
+    await saveSoundtrack(editor.track, editor);
     return;
   }
-
-  const coverUrl = String(track.artworkUrl100 || '')
-    .replace('100x100bb', '600x600bb')
-    .trim();
-
-  const trackTitle = [track.trackName, track.artistName]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' - ');
+  if (state.songSaving) return;
 
   state.songSaving = true;
-  for (const button of els.songSearchResults.querySelectorAll('[data-song-result]')) {
-    button.disabled = true;
-  }
+  const saveButton = els.songSearchResults.querySelector('[data-song-editor-save]');
+  if (saveButton) saveButton.disabled = true;
+  stopSongPreview();
 
   try {
     const data = await api('/api/profile', {
       method: 'PUT',
       body: {
-        profileSongAudioUrl: audioUrl,
-        profileSongCoverUrl: coverUrl,
-        profileSongTitle: trackTitle || null,
+        profileSongAudioUrl: editor.track.previewUrl,
+        profileSongCoverUrl: songArtwork(editor.track),
+        profileSongTitle: songTitle(editor.track) || null,
+        profileSongTrackId: editor.track.trackId ?? null,
+        profileSongArtistName: editor.track.artistName || null,
+        profileSongStartTime: editor.start,
+        profileSongEndTime: editor.end,
       },
     });
 
-    if (!data?.user) {
-      console.error('[logtwo] Perfil sem usuário na resposta.', data);
-      throw new Error('O servidor não confirmou a música do perfil.');
-    }
-
+    if (!data?.user) throw new Error('O servidor não confirmou a música do perfil.');
     if (state.audioProfileId === state.me.id) stopSong();
-
     applyProfileUser(data.user);
-    els.songSearchInput.value = '';
-    hideSongResults();
+    if (state.songEditor === editor) {
+      els.songSearchInput.value = '';
+      hideSongResults();
+    }
     toast('Música do perfil atualizada.');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
     state.songSaving = false;
-
-    for (const button of els.songSearchResults.querySelectorAll('[data-song-result]')) {
-      button.disabled = false;
-    }
+    if (saveButton?.isConnected) saveButton.disabled = false;
   }
 }
 
@@ -5070,6 +5227,10 @@ async function togglePinnedMovie() {
 }
 
 function openMovie(movieId, trigger = document.activeElement, listContext = null) {
+  if (state.songEditor?.context === 'profile') cancelSongEditor();
+  if (state.songEditor?.context === 'soundtrack') state.songEditor = null;
+  stopSongPreview();
+  stopTrack();
   state.modalTrigger = trigger;
   state.listItemContext = listContext;
   state.activeMovie = null;
@@ -5334,6 +5495,9 @@ function closeLightbox() {
 }
 
 function closeModal() {
+  if (state.songPreview?.context === 'soundtrack') stopSongPreview();
+  if (state.songEditor?.context === 'soundtrack') state.songEditor = null;
+  stopTrack();
   endHeroDrag();
   stopHeroVideo();
   closeLightbox();
@@ -5452,6 +5616,8 @@ els.modal.addEventListener('click', (event) => {
     return;
   }
 
+  if (handleSongPickerClick(event, 'soundtrack')) return;
+
   const soundtrackResult = event.target.closest('[data-soundtrack-result]');
 
   if (soundtrackResult) {
@@ -5476,6 +5642,10 @@ els.modal.addEventListener('click', (event) => {
 });
 
 els.modal.addEventListener('input', (event) => {
+  if (event.target.matches('[data-song-time]')) {
+    updateSongSegment(event.target);
+    return;
+  }
   if (event.target.id !== 'review-comment') return;
 
   const counter = els.modal.querySelector('#comment-count');

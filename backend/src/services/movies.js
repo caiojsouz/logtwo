@@ -189,6 +189,11 @@ export function serializeMovie(row, reviews = []) {
     voteAverage: row.vote_average,
     songTitle: row.song_title || null,
     songAudioUrl: row.song_audio_url || null,
+    songCoverUrl: row.song_cover_url || null,
+    songTrackId: row.song_track_id ?? null,
+    songArtistName: row.song_artist_name || null,
+    songStartTime: row.song_start_time ?? 0,
+    songEndTime: row.song_end_time ?? 30,
     providers: parseProviders(row.watch_providers),
     reviews,
   };
