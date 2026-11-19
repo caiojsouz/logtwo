@@ -7,6 +7,7 @@ import { requireActiveDiary } from '../middleware/diary.js';
 
 const router = express.Router();
 const MAX_TITLE_LENGTH = 60;
+const MAX_DESCRIPTION_LENGTH = 280;
 const MAX_ITEM_TITLE_LENGTH = 200;
 const MAX_POSTER_PATH_LENGTH = 128;
 const MEDIA_TYPES = new Set(['movie', 'tv']);
@@ -37,6 +38,20 @@ function parseTitle(rawTitle) {
   }
 
   return title;
+}
+
+function parseDescription(rawDescription) {
+  const description = String(rawDescription ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  if (!description) return null;
+
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new AppError(400, `A descrição pode ter no máximo ${MAX_DESCRIPTION_LENGTH} caracteres.`);
+  }
+
+  return description;
 }
 
 function parseItemTitle(rawTitle) {
@@ -96,6 +111,7 @@ function serializeList(list, items = []) {
     userId: list.user_id,
     ownerName: list.owner_name || null,
     title: list.title,
+    description: list.description || null,
     createdAt: list.created_at,
     items: items.map((item) => serializeItem(item, owner)),
   };
@@ -172,10 +188,11 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const title = parseTitle(req.body?.title);
-    const result = await run('INSERT INTO custom_lists (user_id, title) VALUES (?, ?)', [
-      req.user.id,
-      title,
-    ]);
+    const description = parseDescription(req.body?.description);
+    const result = await run(
+      'INSERT INTO custom_lists (user_id, title, description) VALUES (?, ?, ?)',
+      [req.user.id, title, description],
+    );
     const list = await one(
       `SELECT l.*, u.name AS owner_name
          FROM custom_lists l
@@ -193,8 +210,13 @@ router.put(
   asyncHandler(async (req, res) => {
     const listId = parseId(req.params.id, 'Lista');
     const title = parseTitle(req.body?.title);
+    const description = parseDescription(req.body?.description);
     await loadOwnedList(listId, req.user.id);
-    await run('UPDATE custom_lists SET title = ? WHERE id = ?', [title, listId]);
+    await run('UPDATE custom_lists SET title = ?, description = ? WHERE id = ?', [
+      title,
+      description,
+      listId,
+    ]);
 
     const list = await one(
       `SELECT l.*, u.name AS owner_name

@@ -225,6 +225,7 @@ const els = {
   profileListsHint: document.querySelector('#profile-lists-hint'),
   profileListForm: document.querySelector('#profile-list-form'),
   profileListTitle: document.querySelector('#profile-list-title'),
+  profileListDescription: document.querySelector('#profile-list-description'),
   profileListCreate: document.querySelector('#profile-list-create'),
   rouletteButton: document.querySelector('#watchlist-roulette-btn'),
   rouletteModal: document.querySelector('#roulette-modal'),
@@ -243,6 +244,11 @@ const els = {
   modalContent: document.querySelector('#modal-content'),
   listModal: document.querySelector('#list-modal'),
   listModalContent: document.querySelector('#list-modal-content'),
+  listEditModal: document.querySelector('#list-edit-modal'),
+  listEditForm: document.querySelector('#list-edit-form'),
+  listEditName: document.querySelector('#list-edit-name'),
+  listEditDescription: document.querySelector('#list-edit-description'),
+  listEditSave: document.querySelector('#list-edit-save'),
   discoverModal: document.querySelector('#discover-modal'),
   discoverListName: document.querySelector('#discover-list-name'),
   discoverSearch: document.querySelector('#discover-search'),
@@ -2135,6 +2141,11 @@ function renderListModal() {
               : ''
           }
         </div>
+        ${
+          list.description
+            ? `<p class="text-sm text-zinc-400 mt-2 leading-relaxed max-w-2xl">${escapeHtml(list.description)}</p>`
+            : ''
+        }
         <p class="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
           ${listItemCountText(items.length)}${editable ? '' : ' · somente leitura'}
         </p>
@@ -2203,17 +2214,20 @@ async function createList(event) {
     return;
   }
 
+  const description = (els.profileListDescription?.value || '').trim().replace(/\s+/g, ' ');
+
   state.listBusy = true;
   if (els.profileListCreate) els.profileListCreate.disabled = true;
 
   try {
-    const data = await api('/api/lists', { method: 'POST', body: { title } });
+    const data = await api('/api/lists', { method: 'POST', body: { title, description } });
 
     if (data?.list) {
       state.lists.push({ ...data.list, items: [] });
     }
 
     els.profileListTitle.value = '';
+    if (els.profileListDescription) els.profileListDescription.value = '';
     renderLists();
     toast('Lista criada. Abra um filme e use “Salvar em Lista...” para começar.');
   } catch (error) {
@@ -2276,39 +2290,71 @@ function openListItem(listId, itemId, trigger) {
   });
 }
 
-async function renameList(listId) {
-  if (state.listBusy || !state.me) return;
+function openListEdit(listId) {
+  if (!state.me) return;
 
   const list = state.lists.find((item) => item.id === listId);
   if (!list || list.userId !== state.me.id) return;
 
-  const input = window.prompt('Novo nome da lista:', list.title);
-  if (input === null) return;
+  state.editingListId = listId;
+  els.listEditName.value = list.title;
+  els.listEditDescription.value = list.description || '';
+  els.listEditModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  els.listEditName.focus();
+}
 
-  const title = input.trim().replace(/\s+/g, ' ');
+function closeListEdit() {
+  state.editingListId = null;
+  els.listEditModal.classList.add('hidden');
+
+  if (!els.listModal || els.listModal.classList.contains('hidden')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function saveListEdit(event) {
+  event.preventDefault();
+
+  const listId = state.editingListId;
+  if (!listId || state.listBusy) return;
+
+  const list = state.lists.find((item) => item.id === listId);
+  if (!list) return;
+
+  const title = els.listEditName.value.trim().replace(/\s+/g, ' ');
 
   if (title.length < 2 || title.length > 60) {
     toast('Informe um nome entre 2 e 60 caracteres para a lista.', 'error');
     return;
   }
 
-  if (title === list.title) return;
+  const description = els.listEditDescription.value.trim().replace(/\s+/g, ' ');
 
   state.listBusy = true;
+  if (els.listEditSave) els.listEditSave.disabled = true;
 
   try {
-    const data = await api(`/api/lists/${listId}`, { method: 'PUT', body: { title } });
+    const data = await api(`/api/lists/${listId}`, {
+      method: 'PUT',
+      body: { title, description },
+    });
 
-    if (data?.list?.title) list.title = data.list.title;
+    if (data?.list) {
+      list.title = data.list.title;
+      list.description = data.list.description || null;
+    }
 
+    closeListEdit();
     renderLists();
     if (state.activeListId === listId) renderListModal();
     if (state.listPickerOpen) renderListPicker();
-    toast('Lista renomeada.');
+    toast('Lista atualizada.');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
     state.listBusy = false;
+    if (els.listEditSave) els.listEditSave.disabled = false;
   }
 }
 
@@ -3558,7 +3604,7 @@ on(els.listModal, 'click', (event) => {
   const renameButton = event.target.closest('[data-rename-list]');
 
   if (renameButton) {
-    renameList(Number(renameButton.dataset.renameList));
+    openListEdit(Number(renameButton.dataset.renameList));
     return;
   }
 
@@ -3567,6 +3613,13 @@ on(els.listModal, 'click', (event) => {
   if (itemButton) {
     openListItem(state.activeListId, Number(itemButton.dataset.openListItem), itemButton);
     return;
+  }
+});
+
+on(els.listEditForm, 'submit', saveListEdit);
+on(els.listEditModal, 'click', (event) => {
+  if (event.target.closest('[data-close-list-edit], [data-close-list-edit-button]')) {
+    closeListEdit();
   }
 });
 
@@ -5836,6 +5889,11 @@ document.addEventListener('keydown', (event) => {
 
   if (!els.discoverModal.classList.contains('hidden')) {
     closeDiscover();
+    return;
+  }
+
+  if (els.listEditModal && !els.listEditModal.classList.contains('hidden')) {
+    closeListEdit();
     return;
   }
 
