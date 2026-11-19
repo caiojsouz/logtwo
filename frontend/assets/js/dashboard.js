@@ -244,11 +244,6 @@ const els = {
   modalContent: document.querySelector('#modal-content'),
   listModal: document.querySelector('#list-modal'),
   listModalContent: document.querySelector('#list-modal-content'),
-  listEditModal: document.querySelector('#list-edit-modal'),
-  listEditForm: document.querySelector('#list-edit-form'),
-  listEditName: document.querySelector('#list-edit-name'),
-  listEditDescription: document.querySelector('#list-edit-description'),
-  listEditSave: document.querySelector('#list-edit-save'),
   discoverModal: document.querySelector('#discover-modal'),
   discoverListName: document.querySelector('#discover-list-name'),
   discoverSearch: document.querySelector('#discover-search'),
@@ -2037,6 +2032,7 @@ function renderLists() {
 
 function closeListModal() {
   state.activeListId = null;
+  state.listEditing = false;
   els.listModal.classList.add('hidden');
   document.body.classList.remove('modal-open');
 
@@ -2051,6 +2047,7 @@ function openListModal(listId, trigger = document.activeElement) {
   if (!list) return;
 
   state.activeListId = listId;
+  state.listEditing = false;
   state.listModalTrigger = trigger;
   els.listModal.classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -2121,34 +2118,80 @@ function renderListModal() {
 
   els.listModalContent.innerHTML = `
     <div class="sticky top-0 z-20 flex flex-wrap items-start justify-between gap-4 border-b border-panel/25 bg-[#0b0d0c]/95 p-5 backdrop-blur sm:p-7">
-      <div class="min-w-0">
+      <div class="min-w-0 ${state.listEditing && editable ? 'w-full' : ''}">
         <p class="micro-label">${editable ? 'sua lista' : `lista de ${escapeHtml(firstName(ownerName))}`}</p>
-        <div class="mt-1.5 flex items-center gap-2">
-          <h2 id="list-modal-title" class="font-display text-3xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
-            ${escapeHtml(list.title)}
-          </h2>
-          ${
-            editable
-              ? `<button
-                   type="button"
-                   data-rename-list="${list.id}"
-                   aria-label="Renomear lista"
-                   title="Renomear lista"
-                   class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:text-zinc-100"
-                 >
-                   ${PENCIL_ICON}
-                 </button>`
-              : ''
-          }
-        </div>
         ${
-          list.description
-            ? `<p class="text-sm text-zinc-400 mt-2 leading-relaxed max-w-2xl">${escapeHtml(list.description)}</p>`
-            : ''
+          state.listEditing && editable
+            ? `
+              <input
+                type="text"
+                data-list-edit-title
+                maxlength="60"
+                autocomplete="off"
+                value="${escapeHtml(list.title)}"
+                class="mt-1.5 bg-zinc-900/50 border border-zinc-700 rounded p-2 focus:border-zinc-500 w-full resize-none text-sm text-zinc-100 focus:outline-none"
+              />
+              <textarea
+                data-list-edit-description
+                rows="3"
+                maxlength="280"
+                placeholder="Sobre o que é esta lista? (opcional)"
+                class="mt-2 bg-zinc-900/50 border border-zinc-700 rounded p-2 focus:border-zinc-500 w-full resize-none text-sm text-zinc-100 focus:outline-none"
+              >${escapeHtml(list.description || '')}</textarea>
+              <div class="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  data-save-list-edit="${list.id}"
+                  class="rounded-full bg-accent px-4 py-2 text-[11px] font-semibold text-base transition hover:bg-light disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  data-cancel-list-edit
+                  class="rounded-full border border-panel/35 px-4 py-2 text-[11px] font-semibold text-zinc-300 transition hover:border-accent/40 hover:text-zinc-100"
+                >
+                  Cancelar
+                </button>
+              </div>
+            `
+            : `
+              <div class="mt-1.5 flex items-center gap-2">
+                <h2 id="list-modal-title" class="font-display text-3xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-4xl">
+                  ${escapeHtml(list.title)}
+                </h2>
+                ${
+                  editable
+                    ? `<button
+                         type="button"
+                         data-rename-list="${list.id}"
+                         aria-label="Editar lista"
+                         title="Editar lista"
+                         class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:text-zinc-100"
+                       >
+                         ${PENCIL_ICON}
+                       </button>`
+                    : ''
+                }
+              </div>
+              ${
+                list.description
+                  ? `<p class="text-sm text-zinc-400 mt-1 mb-3 leading-relaxed max-w-[90%]">${escapeHtml(list.description)}</p>`
+                  : editable
+                    ? `<button
+                         type="button"
+                         data-add-list-description="${list.id}"
+                         class="mt-1 mb-3 block cursor-pointer text-sm text-zinc-600 transition-colors hover:text-zinc-400"
+                       >
+                         + Adicionar descrição...
+                       </button>`
+                    : ''
+              }
+              <p class="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
+                ${listItemCountText(items.length)}${editable ? '' : ' · somente leitura'}
+              </p>
+            `
         }
-        <p class="mt-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400">
-          ${listItemCountText(items.length)}${editable ? '' : ' · somente leitura'}
-        </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
         ${
@@ -2290,49 +2333,40 @@ function openListItem(listId, itemId, trigger) {
   });
 }
 
-function openListEdit(listId) {
+function startListEdit(listId) {
   if (!state.me) return;
 
   const list = state.lists.find((item) => item.id === listId);
   if (!list || list.userId !== state.me.id) return;
 
-  state.editingListId = listId;
-  els.listEditName.value = list.title;
-  els.listEditDescription.value = list.description || '';
-  els.listEditModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
-  els.listEditName.focus();
+  state.listEditing = true;
+  renderListModal();
+  els.listModalContent.querySelector('[data-list-edit-title]')?.focus();
 }
 
-function closeListEdit() {
-  state.editingListId = null;
-  els.listEditModal.classList.add('hidden');
-
-  if (!els.listModal || els.listModal.classList.contains('hidden')) {
-    document.body.classList.remove('modal-open');
-  }
+function cancelListEdit() {
+  state.listEditing = false;
+  renderListModal();
 }
 
-async function saveListEdit(event) {
-  event.preventDefault();
-
-  const listId = state.editingListId;
-  if (!listId || state.listBusy) return;
+async function saveListEdit(listId) {
+  if (state.listBusy || !state.me) return;
 
   const list = state.lists.find((item) => item.id === listId);
-  if (!list) return;
+  if (!list || list.userId !== state.me.id) return;
 
-  const title = els.listEditName.value.trim().replace(/\s+/g, ' ');
+  const titleInput = els.listModalContent.querySelector('[data-list-edit-title]');
+  const descInput = els.listModalContent.querySelector('[data-list-edit-description]');
+  const title = (titleInput?.value || '').trim().replace(/\s+/g, ' ');
 
   if (title.length < 2 || title.length > 60) {
     toast('Informe um nome entre 2 e 60 caracteres para a lista.', 'error');
     return;
   }
 
-  const description = els.listEditDescription.value.trim().replace(/\s+/g, ' ');
+  const description = (descInput?.value || '').trim().replace(/\s+/g, ' ');
 
   state.listBusy = true;
-  if (els.listEditSave) els.listEditSave.disabled = true;
 
   try {
     const data = await api(`/api/lists/${listId}`, {
@@ -2345,16 +2379,15 @@ async function saveListEdit(event) {
       list.description = data.list.description || null;
     }
 
-    closeListEdit();
+    state.listEditing = false;
     renderLists();
-    if (state.activeListId === listId) renderListModal();
+    renderListModal();
     if (state.listPickerOpen) renderListPicker();
     toast('Lista atualizada.');
   } catch (error) {
     toast(error.message, 'error');
   } finally {
     state.listBusy = false;
-    if (els.listEditSave) els.listEditSave.disabled = false;
   }
 }
 
@@ -3604,7 +3637,26 @@ on(els.listModal, 'click', (event) => {
   const renameButton = event.target.closest('[data-rename-list]');
 
   if (renameButton) {
-    openListEdit(Number(renameButton.dataset.renameList));
+    startListEdit(Number(renameButton.dataset.renameList));
+    return;
+  }
+
+  const addDescButton = event.target.closest('[data-add-list-description]');
+
+  if (addDescButton) {
+    startListEdit(Number(addDescButton.dataset.addListDescription));
+    return;
+  }
+
+  if (event.target.closest('[data-cancel-list-edit]')) {
+    cancelListEdit();
+    return;
+  }
+
+  const saveButton = event.target.closest('[data-save-list-edit]');
+
+  if (saveButton) {
+    saveListEdit(Number(saveButton.dataset.saveListEdit));
     return;
   }
 
@@ -3613,13 +3665,6 @@ on(els.listModal, 'click', (event) => {
   if (itemButton) {
     openListItem(state.activeListId, Number(itemButton.dataset.openListItem), itemButton);
     return;
-  }
-});
-
-on(els.listEditForm, 'submit', saveListEdit);
-on(els.listEditModal, 'click', (event) => {
-  if (event.target.closest('[data-close-list-edit], [data-close-list-edit-button]')) {
-    closeListEdit();
   }
 });
 
@@ -5892,17 +5937,17 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (els.listEditModal && !els.listEditModal.classList.contains('hidden')) {
-    closeListEdit();
-    return;
-  }
-
   if (!els.modal.classList.contains('hidden')) {
     closeModal();
     return;
   }
 
   if (!els.listModal.classList.contains('hidden')) {
+    if (state.listEditing) {
+      cancelListEdit();
+      return;
+    }
+
     closeListModal();
     return;
   }

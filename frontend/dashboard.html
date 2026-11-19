@@ -876,66 +876,6 @@
     </div>
 
     <div
-      id="list-edit-modal"
-      class="fixed inset-0 z-[90] hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="list-edit-title"
-    >
-      <div data-close-list-edit class="absolute inset-0 bg-base/90 backdrop-blur-md"></div>
-      <div class="relative flex min-h-full items-center justify-center p-3 sm:p-6">
-        <form
-          id="list-edit-form"
-          class="relative w-full max-w-lg rounded-[26px] border border-panel/40 bg-[#0b0d0c] p-5 shadow-cinema animate-scale-in sm:p-7"
-          novalidate
-        >
-          <h2 id="list-edit-title" class="font-display text-2xl leading-none tracking-[-0.02em] text-zinc-100 sm:text-3xl">
-            Editar lista<span class="text-accent">.</span>
-          </h2>
-
-          <label class="mt-5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400" for="list-edit-name">
-            Nome
-          </label>
-          <input
-            id="list-edit-name"
-            type="text"
-            maxlength="60"
-            autocomplete="off"
-            class="mt-1.5 w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg p-3 text-sm focus:outline-none focus:border-zinc-600"
-          />
-
-          <label class="mt-4 block text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400" for="list-edit-description">
-            Descrição
-          </label>
-          <textarea
-            id="list-edit-description"
-            rows="3"
-            maxlength="280"
-            placeholder="Sobre o que é esta lista? (opcional)"
-            class="mt-1.5 w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-lg p-3 text-sm focus:outline-none focus:border-zinc-600 resize-none"
-          ></textarea>
-
-          <div class="mt-6 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              data-close-list-edit-button
-              class="rounded-full border border-panel/35 px-4 py-2 text-[11px] font-semibold text-zinc-300 transition hover:border-accent/40 hover:text-zinc-100"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              id="list-edit-save"
-              class="rounded-full bg-accent px-4 py-2 text-[11px] font-semibold text-base transition hover:bg-light disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Salvar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div
       id="discover-modal"
       class="fixed inset-0 z-[80] hidden"
       role="dialog"
